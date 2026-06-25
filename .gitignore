@@ -1,0 +1,61 @@
+﻿# Dependencies
+node_modules/
+
+# Production build
+dist/
+build/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Local database and generated runtime data
+data/app-db.json
+data/app-db.json.backup.json
+data/app-db.backup.json
+data/*.backup.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+vite.err.log
+vite.out.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tests / coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.parcel-cache/
+.vite/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Optional local exports
+exports/
+vystup/
+*.local.xlsx
+*.local.zip
+
+# Local helper scripts / generated update packages
+patch-google-sheet.mjs
+google_sheet_update_files.zip
