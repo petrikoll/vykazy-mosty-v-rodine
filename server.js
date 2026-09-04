@@ -62,10 +62,13 @@ function deriveVapidKeys(secret) {
 }
 
 try {
+  const derivedKeySecret = process.env.APP_SETUP_TOKEN
+    || process.env.GOOGLE_SERVICE_ACCOUNT_BASE64
+    || process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   const keys = process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY
     ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY }
-    : process.env.APP_SETUP_TOKEN
-      ? deriveVapidKeys(process.env.APP_SETUP_TOKEN)
+    : derivedKeySecret
+      ? deriveVapidKeys(derivedKeySecret)
       : null;
   if (keys) {
     webPush.setVapidDetails(
