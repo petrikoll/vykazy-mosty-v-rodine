@@ -15,6 +15,7 @@ data/app-db.json
 data/app-db.json.backup.json
 data/app-db.backup.json
 data/*.backup.json
+data/google-drive-oauth.json
 
 # Logs
 logs/

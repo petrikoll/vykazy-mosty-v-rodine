@@ -5,8 +5,11 @@
     "dev:api": "node server.js",
     "build": "vite build",
     "start": "node server.js",
-    "test": "node tests/workReportRules.test.mjs && node tests/exportZip.test.mjs",
+    "test": "node tests/auth.test.cjs && node tests/educationPolicy.test.cjs && node tests/evaluationPolicy.test.cjs && node tests/educationStorage.test.cjs && node tests/fileDeduplication.test.cjs && node tests/projectConfig.test.mjs && node tests/workReportRules.test.mjs && node tests/reportRecalc.test.mjs && node tests/timeRange.test.mjs && node tests/meetingUtils.test.mjs && node tests/signedReportImport.test.mjs && node tests/workReportPrint.test.mjs && node tests/exportZip.test.mjs",
     "preview": "vite preview --host 127.0.0.1"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
@@ -14,11 +17,18 @@
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
+    "googleapis": "^159.0.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
+    "mammoth": "^1.12.2",
+    "multer": "^2.0.2",
+    "pdf-lib": "^1.17.1",
     "pdfmake": "^0.3.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "vite": "^7.0.0"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }
