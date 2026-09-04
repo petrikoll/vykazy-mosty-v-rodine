@@ -12,6 +12,7 @@ import WorkReports from "./components/WorkReports.jsx";
 import PortalDashboard from "./components/PortalDashboard.jsx";
 import TeamDashboard from "./components/TeamDashboard.jsx";
 import PushNotificationButton from "./components/PushNotificationButton.jsx";
+import MethodologySaver from "./components/MethodologySaver.jsx";
 
 const NAV_GROUPS = [
   { label: "Přehled", items: [{ id: "dashboard", label: "Přehled úkolů", icon: LayoutDashboard }] },
@@ -43,7 +44,7 @@ function AuthScreen({ setup, setupCodeRequired, options, onAuthenticated }) {
     <main className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-7 shadow-xl">
       <div className="mb-6 flex items-center gap-3"><div className="rounded-xl bg-blue-800 p-3 text-white"><BriefcaseBusiness size={28}/></div><div><h1 className="text-xl font-bold text-slate-900">Mosty v rodině</h1><p className="text-sm text-slate-500">Personální a projektový portál</p></div></div>
       <h2 className="text-lg font-bold">{setup ? "První nastavení" : "Přihlášení"}</h2>
-      <p className="mb-5 mt-1 text-sm text-slate-500">{setup ? "Založte první osobní účet Odborného garanta. Dočasný PIN bude 0000." : "Vyberte své jméno a zadejte osobní PIN. Projektová pozice se při přihlášení nevybírá."}</p>
+      <p className="mb-5 mt-1 text-sm text-slate-500">{setup ? "Založte první osobní účet Odborného garanta. Dočasný PIN bude 1111." : "Vyberte své jméno a zadejte osobní PIN. Projektová pozice se při přihlášení nevybírá."}</p>
       {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
       <form className="space-y-4" onSubmit={submit}>
         {setup ? <><Field label="Jméno Odborného garanta"><Input required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}/></Field><Field label="Celkový úvazek u zaměstnavatele"><Input type="number" min="0" step="0.01" value={form.globalFte} onChange={(e) => setForm((f) => ({ ...f, globalFte: e.target.value }))}/></Field>{setupCodeRequired && <Field label="Instalační kód" hint="Tajný kód nastavený při nasazení aplikace"><Input required type="password" value={form.setupCode} onChange={(e) => setForm((f) => ({ ...f, setupCode: e.target.value }))}/></Field>}</> : <><Field label="Jméno pracovníka"><Select required value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>{options.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field><Field label="PIN" hint="Zadejte svůj osobní PIN"><Input required type="password" inputMode="numeric" pattern="[0-9]{4,10}" value={form.pin} onChange={(e) => setForm((f) => ({ ...f, pin: e.target.value }))}/></Field></>}
@@ -141,12 +142,20 @@ export default function App() {
     setToken(""); setPortal(null); setActive("dashboard"); await boot();
   };
 
+  const rememberMethodologyAnswer = (answer) => {
+    setPortal((current) => current ? {
+      ...current,
+      methodologyAnswers: [...(current.methodologyAnswers || []).filter((item) => item.id !== answer.id), answer],
+    } : current);
+  };
+
   if (loading || !config) return <div className="app-shell-background flex min-h-screen items-center justify-center font-semibold text-slate-600">Načítám portál…</div>;
   if (!portal) return <AuthScreen setup={setup} setupCodeRequired={setupCodeRequired} options={options} onAuthenticated={async () => { await refresh(); setSetup(false); }} />;
 
   const employee = portal.employee;
-  const leader = ["manager", "director"].includes(employee.appRole);
-  const navGroups = employee.appRole === "director"
+  const leader = ["manager", "director", "project_manager"].includes(employee.appRole);
+  const admin = ["director", "project_manager"].includes(employee.appRole);
+  const navGroups = admin
     ? [...NAV_GROUPS, { label: "Správa", items: [{ id: "settings", label: "Pracovníci a nastavení", icon: Settings2 }] }]
     : NAV_GROUPS;
   const ownPlans = portal.educationPlans.filter((item) => item.employeeId === employee.id);
@@ -154,10 +163,11 @@ export default function App() {
   const ownEvaluations = portal.employeeEvaluations.filter((item) => item.employeeId === employee.id);
   const ownReports = portal.workReports.filter((item) => item.employeeId === employee.id);
 
-  const roleLabel = employee.appRole === "manager" ? "Odborný garant" : employee.appRole === "director" ? "Vedoucí služby/programu" : "Pracovník";
+  const roleLabel = employee.appRole === "manager" ? "Odborný garant" : employee.appRole === "director" ? "Vedoucí služby/programu" : employee.appRole === "project_manager" ? "Projektový manažer" : "Pracovník";
   const currentPeriod = new Intl.DateTimeFormat("cs-CZ", { month: "long", year: "numeric" }).format(new Date());
 
   return <div className="app-shell-background min-h-screen text-slate-900">
+    <MethodologySaver employee={employee} history={portal.methodologyAnswers || []} onAnswerSaved={rememberMethodologyAnswer}/>
     {showPinChange && <ChangePinDialog onClose={() => setShowPinChange(false)} onChanged={refresh}/>}
     <div className="mx-auto min-h-screen max-w-[1440px] lg:grid lg:grid-cols-[224px_minmax(0,1fr)]">
       <aside className="bg-blue-950 px-3 py-3 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:px-3 lg:py-4">
@@ -179,20 +189,20 @@ export default function App() {
         <main className="p-3 sm:p-5">
         {driveNotice && <div className={`mb-4 rounded-lg border p-3 text-sm font-semibold ${driveNotice.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>{driveNotice.text}</div>}
         {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
-        {employee.pinMustChange && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><span><strong>Používáte dočasný PIN 0000.</strong> Nastavte si vlastní.</span><Button variant="secondary" className="min-h-8 py-1 text-xs" onClick={() => setShowPinChange(true)}><KeyRound size={14}/><span className="ml-1.5">Změnit PIN</span></Button></div>}
+        {employee.pinMustChange && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><span><strong>Používáte dočasný PIN 1111.</strong> Nastavte si vlastní.</span><Button variant="secondary" className="min-h-8 py-1 text-xs" onClick={() => setShowPinChange(true)}><KeyRound size={14}/><span className="ml-1.5">Změnit PIN</span></Button></div>}
         {!portal.google.sheetsConfigured && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Google Sheet je připravený, ale aplikace zatím nemá servisní účet.</strong> Do jeho doplnění se záznamy bezpečně ukládají do místní databáze.</div>}
         {active !== "dashboard" && portal.google.sheetsConfigured && !portal.google.driveConfigured && <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900"><strong>Google Sheet je připojený.</strong> Google Drive se připojí jednou v Nastavení.</div>}
-        {active === "dashboard" && <PortalDashboard portal={portal} positions={config.positions} project={config.project} onNavigate={setActive}/>}
+        {active === "dashboard" && <PortalDashboard portal={portal} positions={config.positions} project={config.project} onNavigate={setActive} onRefresh={refresh}/>}
         {active === "teamDashboard" && leader && <TeamDashboard portal={portal} positions={config.positions} onNavigate={setActive}/>}
-        {active === "reports" && (["manager", "director"].includes(employee.appRole)
+        {active === "reports" && (["manager", "director", "project_manager"].includes(employee.appRole)
           ? <ManagerReports portal={portal} positions={config.positions} project={config.project} onRefresh={refresh}/>
           : <WorkReports employee={employee} positions={config.positions} project={config.project} reports={ownReports} onRefresh={refresh}/>)}
-        {active === "education" && (["manager", "director"].includes(employee.appRole)
+        {active === "education" && (["manager", "director", "project_manager"].includes(employee.appRole)
           ? <ManagerEducation portal={portal} positions={config.positions} project={config.project} onRefresh={refresh}/>
           : <Education employee={employee} actor={employee} employees={portal.employees} positions={config.positions} project={config.project} plans={ownPlans} records={ownEducation} evaluations={ownEvaluations} onRefresh={refresh} readOnly/>)}
         {active === "supervisions" && <Supervisions employee={employee} employees={portal.employees} records={portal.supervisions} onRefresh={refresh}/>}
         {active === "meetings" && <Meetings employee={employee} employees={portal.employees} meetings={portal.meetings} project={config.project} onRefresh={refresh}/>}
-        {active === "settings" && employee.appRole === "director" && <Settings portal={portal} positions={config.positions} onRefresh={refresh}/>}
+        {active === "settings" && admin && <Settings portal={portal} positions={config.positions} onRefresh={refresh}/>}
         </main>
       </section>
     </div>

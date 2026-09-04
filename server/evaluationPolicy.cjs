@@ -6,9 +6,9 @@ function canManageEmployeeEvaluation(actor, target) {
 }
 
 function canViewEmployeeEvaluation(actor, target) {
-  if (!actor || !target) return false;
+  if (!actor || !target || target.appRole === "project_manager") return false;
   if (actor.id === target.id) return true;
-  if (actor.appRole === "director") return target.appRole !== "director";
+  if (["director", "project_manager"].includes(actor.appRole)) return target.appRole !== "project_manager";
   return actor.appRole === "manager" && target.appRole === "worker";
 }
 

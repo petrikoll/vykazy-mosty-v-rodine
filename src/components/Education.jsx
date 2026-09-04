@@ -184,7 +184,7 @@ export default function Education({
   const finalStatus = isManagerOwnPlan ? "submitted" : "approved";
   const finalAction = isManagerOwnPlan
     ? "Předat Vedoucí služby/programu ke schválení"
-    : actor?.appRole === "director"
+    : ["director", "project_manager"].includes(actor?.appRole)
       ? "Schvaluji včetně předpokládané ceny vzdělávání"
       : current?.status === "approved" ? "Uložit změny a znovu schválit" : "Uložit a schválit plán";
   const educationHours = calculateInclusiveEducationHours(recordForm);

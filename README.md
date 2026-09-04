@@ -59,9 +59,9 @@ GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3001/api/google-drive/callback
 GOOGLE_DRIVE_ALLOWED_EMAIL=emceckovm@gmail.com
 ```
 
-Listy `Pracovníci`, `Výkazy`, `Hodnocení zaměstnanců`, `Vzdělávací plány`, `Vzdělávání`, `Supervize` a `Porady` jsou připravené jako centrální registr. Přihlašovací PINy se ukládají pouze jako nevratné osolené hashe; čitelná hodnota PINu se do tabulky neposílá. Podepsané výkazy aplikace ukládá do struktury:
+Listy `Pracovníci`, `Výkazy`, `Hodnocení zaměstnanců`, `Vzdělávací plány`, `Vzdělávání`, `Supervize`, `Porady`, `Upozornění` a `Metodický spořič` jsou připravené jako centrální registr. Přihlašovací PINy se ukládají pouze jako nevratné osolené hashe; čitelná hodnota PINu se do tabulky neposílá. Podepsané výkazy aplikace ukládá do struktury:
 
-Nové osobní účty mají dočasný PIN `0000`. Přihlášení probíhá podle jména pracovníka (nikoli podle pozice), jednomu účtu lze přiřadit více projektových pozic a každý přihlášený pracovník si může svůj PIN změnit.
+Nové osobní účty mají dočasný PIN `1111`. Přihlášení probíhá podle jména pracovníka (nikoli podle pozice), jednomu účtu lze přiřadit více projektových pozic a každý přihlášený pracovník si může svůj PIN změnit.
 
 Správa osobních účtů a přiřazování projektových pozic je v sekci `Nastavení`, kterou v rozhraní i na API může používat pouze Vedoucí služby/programu.
 
@@ -73,7 +73,7 @@ Bez Google konfigurace aplikace dál funguje a ukládá záznamy do místní dat
 
 ### Bezplatný provoz na Renderu
 
-Bezplatná služba Render nemá trvalý disk. Produkční konfigurace proto používá `GOOGLE_SHEETS_PRIMARY=true`: úplný záznam každého řádku se ukládá do skrytého posledního sloupce příslušného Google listu a po každém studeném startu se z něj obnoví do dočasné místní databáze. PDF a osvědčení musí být v tomto režimu uložené na Google Disku; aplikace nedovolí předstírat úspěšné uložení pouze do dočasného souboru.
+Bezplatná služba Render nemá trvalý disk. Produkční konfigurace proto používá `GOOGLE_SHEETS_PRIMARY=true`: úplný záznam každého řádku se ukládá do skrytého posledního sloupce příslušného Google listu. Aplikace z něj obnoví dočasnou místní databázi při každém spuštění a při načtení portálu ji průběžně obnovuje, takže se sjednotí záznamy vytvořené lokálně i na Renderu. PDF a osvědčení musí být v tomto režimu uložené na Google Disku; aplikace nedovolí předstírat úspěšné uložení pouze do dočasného souboru.
 
 Pro bezplatný Render vyplňte také tyto tajné proměnné:
 
@@ -99,6 +99,25 @@ GEMINI_DOCUMENT_MODEL=gemini-2.5-flash
 ```
 
 Výstup AI je vždy návrh ke kontrole. Do poznámek pro Gemini nevkládejte zbytečné identifikační údaje klientů.
+
+## Metodický spořič
+
+Po třech minutách nečinnosti přihlášeného uživatele se nad beze změny zachovanou stránkou otevře metodická chvilka. Uživatel může odpovědět na jednu nebo tři otázky, případně ji kdykoli zavřít. Historie se ukládá ke konkrétnímu pracovníkovi do místní databáze i do listu `Metodický spořič` v Google Sheetu. Při otevřeném dialogu, skrytém okně nebo probíhajícím zápisu na server se aktivace bezpečně odloží.
+
+Autoritativní databanka je v `data/methodology/SAS_Emcecko_kviz_databanka_final.csv`. Po její schválené úpravě vygenerujete runtime JSON příkazem:
+
+```powershell
+npm run methodology:import
+```
+
+Konfigurace je rozdělena takto:
+
+- timeout, počty otázek, hranice úrovní a základní texty: `src/methodology/quizConfig.mjs`;
+- pravidla výběru a statistiky: `src/methodology/quizServices.mjs`;
+- obrazovky a doprovodné texty: `src/components/MethodologySaver.jsx`;
+- lehké SVG motivy žáby: `src/components/FrogMascot.jsx`.
+
+Odborný obsah otázek, odpovědí a vysvětlení se v aplikaci neupravuje ručně; mění se pouze ve zdrojovém CSV a následně se znovu spustí import.
 
 ## Data a zálohy
 

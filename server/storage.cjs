@@ -7,7 +7,7 @@ const DB_PATH = process.env.APP_DB_PATH
 const BACKUP_PATH = `${DB_PATH}.backup.json`;
 
 const EMPTY_DATA = {
-  schemaVersion: 6,
+  schemaVersion: 8,
   employees: [],
   workReports: [],
   employeeEvaluations: [],
@@ -16,6 +16,7 @@ const EMPTY_DATA = {
   supervisions: [],
   meetings: [],
   pushSubscriptions: [],
+  methodologyAnswers: [],
   auditLog: [],
 };
 
@@ -56,16 +57,57 @@ function migrateData(data) {
       successCriterion: typeof goal === "string" ? "" : goal?.successCriterion || "",
     })) : [],
   })) : [];
+  const normalizedPersonName = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\b(mgr|bc|ing|arch|phdr|mudr|judr|rndr|doc|prof)\.?\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const meetings = Array.isArray(source.meetings) ? source.meetings.map((meeting, meetingIndex) => ({
+    ...meeting,
+    tasks: Array.isArray(meeting.tasks) ? meeting.tasks.map((task, taskIndex) => {
+      const meetingKey = String(meeting.id || `legacy-${meetingIndex + 1}`).replace(/[^a-zA-Z0-9-]/g, "");
+      const ownerIds = [...new Set([
+        ...(Array.isArray(task.ownerIds) ? task.ownerIds : []),
+        task.ownerId,
+      ].filter(Boolean))];
+      const normalizedTask = {
+        ...task,
+        id: task.id || `TSK-${meetingKey}-${taskIndex + 1}`,
+        ownerIds,
+        ownerId: ownerIds[0] || "",
+      };
+      if (ownerIds.length || !normalizedTask.owner) {
+        return {
+          ...normalizedTask,
+          ownerNames: ownerIds.map((ownerId) => employees.find((employee) => employee.id === ownerId)?.name).filter(Boolean),
+          externalOwnerNames: Array.isArray(task.externalOwnerNames) ? task.externalOwnerNames : [],
+        };
+      }
+      const requestedName = normalizedPersonName(normalizedTask.owner);
+      const matches = employees.filter((employee) => {
+        const employeeName = normalizedPersonName(employee.name);
+        return employee.active !== false && (employeeName === requestedName
+          || employeeName.endsWith(` ${requestedName}`)
+          || requestedName.endsWith(` ${employeeName}`));
+      });
+      return matches.length === 1
+        ? { ...normalizedTask, ownerIds: [matches[0].id], ownerNames: [matches[0].name], ownerId: matches[0].id, owner: matches[0].name, externalOwnerNames: [] }
+        : { ...normalizedTask, ownerNames: [], externalOwnerNames: Array.isArray(task.externalOwnerNames) ? task.externalOwnerNames : [] };
+    }) : [],
+  })) : [];
   return {
-    schemaVersion: 6,
+    schemaVersion: 8,
     employees,
     workReports: Array.isArray(source.workReports) ? source.workReports : [],
     employeeEvaluations,
     educationPlans,
     educationRecords: Array.isArray(source.educationRecords) ? source.educationRecords : [],
     supervisions: Array.isArray(source.supervisions) ? source.supervisions : [],
-    meetings: Array.isArray(source.meetings) ? source.meetings : [],
+    meetings,
     pushSubscriptions: Array.isArray(source.pushSubscriptions) ? source.pushSubscriptions : [],
+    methodologyAnswers: Array.isArray(source.methodologyAnswers) ? source.methodologyAnswers : [],
     auditLog: Array.isArray(source.auditLog) ? source.auditLog.slice(-5000) : [],
   };
 }

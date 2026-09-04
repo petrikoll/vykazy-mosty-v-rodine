@@ -41,6 +41,11 @@ const SHEET_HEADERS = {
     "id", "employeeId", "zaměstnanec", "koncový bod", "veřejný klíč zařízení",
     "ověřovací klíč zařízení", "vytvořeno", "aktualizováno", SNAPSHOT_HEADER,
   ],
+  "Metodický spořič": [
+    "id", "user_id", "zaměstnanec", "question_id", "timestamp", "selected_answer_id",
+    "correct", "standard", "tema", "obtiznost", "kriticke_tema", "series_id",
+    "verze banky", "verze metodiky", SNAPSHOT_HEADER,
+  ],
 };
 
 let clientsPromise = null;
@@ -296,6 +301,8 @@ function valuesForRecord(type, record) {
       return [record.id, record.date, record.title, record.location, (record.participantNames || []).join(", "), record.agenda, record.decisions, JSON.stringify(record.tasks || []), record.status, record.driveFileUrl || "", record.createdByName, record.updatedAt, record.notes || ""];
     case "pushSubscription":
       return [record.id, record.employeeId, record.employeeName, record.endpoint, record.keys?.p256dh || "", record.keys?.auth || "", record.createdAt, record.updatedAt];
+    case "methodologyAnswer":
+      return [record.id, record.employeeId, record.employeeName, record.questionId, record.timestamp, record.selectedAnswerId, record.correct, record.standard, record.topic, record.difficulty, record.critical, record.seriesId, record.bankVersion || "", record.methodologyVersion || ""];
     default:
       throw new Error(`Neznámý typ záznamu: ${type}`);
   }
@@ -310,6 +317,7 @@ const TYPE_TO_SHEET = {
   supervision: "Supervize",
   meeting: "Porady",
   pushSubscription: "Upozornění",
+  methodologyAnswer: "Metodický spořič",
 };
 
 const TYPE_TO_COLLECTION = {
@@ -321,6 +329,7 @@ const TYPE_TO_COLLECTION = {
   supervision: "supervisions",
   meeting: "meetings",
   pushSubscription: "pushSubscriptions",
+  methodologyAnswer: "methodologyAnswers",
 };
 
 async function syncRecord(type, record) {
@@ -338,7 +347,7 @@ async function ensureSheets() {
 async function loadDatabaseSnapshot() {
   if (!getStatus().sheetsConfigured) throw new Error("Google Sheets nejsou nakonfigurované jako trvalé úložiště.");
   const snapshot = {
-    schemaVersion: 6,
+    schemaVersion: 8,
     employees: [],
     workReports: [],
     employeeEvaluations: [],
@@ -347,6 +356,7 @@ async function loadDatabaseSnapshot() {
     supervisions: [],
     meetings: [],
     pushSubscriptions: [],
+    methodologyAnswers: [],
     auditLog: [],
   };
   const entries = Object.entries(TYPE_TO_SHEET);

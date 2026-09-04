@@ -67,17 +67,25 @@ function authMiddleware(readDb) {
 }
 
 function directorOnly(req, res, next) {
-  if (req.auth?.employee?.appRole !== "director") {
-    return res.status(403).json({ error: "Tato akce je dostupná pouze Vedoucí služby/programu." });
+  if (!isAdminRole(req.auth?.employee?.appRole)) {
+    return res.status(403).json({ error: "Tuto akci může provést pouze Vedoucí služby/programu nebo Projektový manažer." });
   }
   return next();
 }
 
 function leaderOnly(req, res, next) {
-  if (!["manager", "director"].includes(req.auth?.employee?.appRole)) {
-    return res.status(403).json({ error: "Tato akce je dostupná pouze Odbornému garantovi nebo Vedoucí služby/programu." });
+  if (!isLeaderRole(req.auth?.employee?.appRole)) {
+    return res.status(403).json({ error: "Tuto akci může provést pouze Odborný garant, Vedoucí služby/programu nebo Projektový manažer." });
   }
   return next();
+}
+
+function isAdminRole(role) {
+  return ["director", "project_manager"].includes(role);
+}
+
+function isLeaderRole(role) {
+  return ["manager", "director", "project_manager"].includes(role);
 }
 
 function publicEmployee(employee) {
@@ -91,6 +99,8 @@ module.exports = {
   createSession,
   deleteSession,
   hashPin,
+  isAdminRole,
+  isLeaderRole,
   verifyPin,
   authMiddleware,
   directorOnly,

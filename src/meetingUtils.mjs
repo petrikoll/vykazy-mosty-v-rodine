@@ -56,6 +56,18 @@ export function findTaskOwnerId(owner, employees = []) {
   return match?.id || "";
 }
 
+export function findExternalTaskOwnerName(owner, externalParticipantNames = []) {
+  const normalizedOwner = normalizedPersonName(owner);
+  if (!normalizedOwner) return "";
+  const matches = externalParticipantNames.filter((name) => {
+    const normalizedName = normalizedPersonName(name);
+    return normalizedName === normalizedOwner
+      || normalizedName.endsWith(` ${normalizedOwner}`)
+      || normalizedOwner.endsWith(` ${normalizedName}`);
+  });
+  return matches.length === 1 ? matches[0] : "";
+}
+
 export function normalizeTaskDeadline(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -73,13 +85,32 @@ export function meetingMinutesFromRecord(meeting = {}) {
 
 export function meetingTasksFromRecord(meeting = {}, employees = []) {
   const source = (meeting.tasks || []).length ? meeting.tasks : parseMeetingTasks(meeting.notes || "");
-  return source.filter((task) => task?.text).map((task) => ({
-    id: task.id || "",
-    text: String(task.text || "").trim(),
-    ownerId: task.ownerId || findTaskOwnerId(task.owner, employees),
-    owner: String(task.owner || "").trim(),
-    deadline: normalizeTaskDeadline(task.deadline),
-  }));
+  return source.filter((task) => task?.text).map((task) => {
+    const legacyOwnerId = task.ownerId || findTaskOwnerId(task.owner, employees);
+    const ownerIds = [...new Set([
+      ...(Array.isArray(task.ownerIds) ? task.ownerIds : []),
+      legacyOwnerId,
+    ].filter(Boolean))];
+    return {
+      id: task.id || "",
+      text: String(task.text || "").trim(),
+      ownerIds,
+      ownerNames: Array.isArray(task.ownerNames)
+        ? task.ownerNames
+        : ownerIds.map((id) => employees.find((employee) => employee.id === id)?.name).filter(Boolean),
+      externalOwnerNames: Array.isArray(task.externalOwnerNames) ? task.externalOwnerNames : [],
+      ownerId: ownerIds[0] || "",
+      owner: String(task.owner || "").trim(),
+      deadline: normalizeTaskDeadline(task.deadline),
+      status: task.status || "",
+      completionText: String(task.completionText || "").trim(),
+      completionRecipientIds: Array.isArray(task.completionRecipientIds) ? task.completionRecipientIds : [],
+      completionRecipientNames: Array.isArray(task.completionRecipientNames) ? task.completionRecipientNames : [],
+      completedAt: task.completedAt || "",
+      completedBy: task.completedBy || "",
+      completedByName: task.completedByName || "",
+    };
+  });
 }
 
 export function contentFromLegacyMeeting(meeting = {}) {

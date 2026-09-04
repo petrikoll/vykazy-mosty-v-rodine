@@ -18,7 +18,7 @@ const emptyForm = () => ({
   professionalGoals: [makeGoal()],
 });
 
-const roleLabel = (role) => role === "manager" ? "Odborný garant" : role === "director" ? "Vedoucí služby/programu" : "Pracovník";
+const roleLabel = (role) => role === "manager" ? "Odborný garant" : role === "director" ? "Vedoucí služby/programu" : role === "project_manager" ? "Projektový manažer" : "Pracovník";
 
 export default function EmployeeEvaluation({
   employee, actor, year, evaluation, previousEvaluation, previousPlan, plan, onRefresh, onOpenPlan, readOnly = false,
@@ -26,7 +26,7 @@ export default function EmployeeEvaluation({
   const [form, setForm] = useState(emptyForm);
   const [notice, setNotice] = useTimedNotice();
   const [busy, setBusy] = useState(false);
-  const locked = evaluation?.status === "closed" && plan?.status === "approved" && actor.appRole !== "director";
+  const locked = evaluation?.status === "closed" && plan?.status === "approved" && !["director", "project_manager"].includes(actor.appRole);
   const editable = !readOnly && !locked;
 
   useEffect(() => {

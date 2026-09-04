@@ -4,7 +4,7 @@ import { X } from "lucide-react";
 export function useTimedNotice(initialValue = null, delay = 3000) {
   const [notice, setNotice] = useState(initialValue);
   useEffect(() => {
-    if (!notice || !["success", "ok"].includes(notice.type)) return undefined;
+    if (!notice || !["success", "ok", "info"].includes(notice.type)) return undefined;
     const currentNotice = notice;
     const timer = window.setTimeout(() => {
       setNotice((current) => current === currentNotice ? null : current);

@@ -15,6 +15,8 @@ const {
   createSession,
   deleteSession,
   hashPin,
+  isAdminRole,
+  isLeaderRole,
   directorOnly,
   leaderOnly,
   publicEmployee,
@@ -24,6 +26,7 @@ const googleWorkspace = require("./server/googleWorkspace.cjs");
 const { allowedEducationPlanStatuses, canManageEducationPlan } = require("./server/educationPolicy.cjs");
 const { canManageEmployeeEvaluation, canViewEmployeeEvaluation } = require("./server/evaluationPolicy.cjs");
 const { fileHash, findDuplicateByFileHash } = require("./server/fileDeduplication.cjs");
+const { createMethodologyAnswer } = require("./server/methodologyPolicy.cjs");
 const {
   analyzeBundles,
   mergeMappedCandidates,
@@ -118,30 +121,71 @@ const exportName = (value) =>
     .replace(/[^A-Za-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
 
-function normalizeMeetingTasks(db, tasks) {
+function normalizeMeetingTasks(db, tasks, externalParticipantNames = [], existingTasks = []) {
   if (!Array.isArray(tasks)) return [];
   return tasks.slice(0, 100).map((task) => {
     const text = normalizeText(task?.text, 1000);
     if (!text) return null;
-    let owner = db.employees.find((employee) => employee.active !== false && employee.id === normalizeText(task?.ownerId, 100));
-    if (!owner && task?.owner) {
+    const requestedOwnerIds = [...new Set([
+      ...(Array.isArray(task?.ownerIds) ? task.ownerIds : []),
+      task?.ownerId,
+    ].map((id) => normalizeText(id, 100)).filter(Boolean))];
+    let owners = db.employees.filter((employee) => employee.active !== false && requestedOwnerIds.includes(employee.id));
+    if (requestedOwnerIds.length && owners.length !== requestedOwnerIds.length) throw new Error(`Úkol „${text}“ obsahuje neplatnou odpovědnou osobu.`);
+    if (!owners.length && task?.owner) {
       const requestedName = slugify(task.owner).replace(/^(mgr|bc|ing|arch|phdr|mudr|judr|rndr|doc|prof)-/, "");
       const matches = db.employees.filter((employee) => {
         const employeeName = slugify(employee.name).replace(/^(mgr|bc|ing|arch|phdr|mudr|judr|rndr|doc|prof)-/, "");
         return employee.active !== false && (employeeName === requestedName || employeeName.endsWith(`-${requestedName}`) || requestedName.endsWith(`-${employeeName}`));
       });
-      if (matches.length === 1) owner = matches[0];
+      if (matches.length === 1) owners = matches;
+    }
+    const requestedExternalOwners = Array.isArray(task?.externalOwnerNames)
+      ? task.externalOwnerNames.map((name) => normalizeText(name, 120)).filter(Boolean)
+      : [];
+    let externalOwners = externalParticipantNames.filter((name) => requestedExternalOwners.some((requested) => slugify(requested) === slugify(name)));
+    if (requestedExternalOwners.length && externalOwners.length !== [...new Set(requestedExternalOwners.map(slugify))].length) {
+      throw new Error(`Úkol „${text}“ obsahuje osobu, která není mezi účastníky porady.`);
+    }
+    if (!owners.length && !externalOwners.length && task?.owner) {
+      const requestedName = slugify(task.owner).replace(/^(mgr|bc|ing|arch|phdr|mudr|judr|rndr|doc|prof)-/, "");
+      const matches = externalParticipantNames.filter((name) => {
+        const externalName = slugify(name).replace(/^(mgr|bc|ing|arch|phdr|mudr|judr|rndr|doc|prof)-/, "");
+        return externalName === requestedName || externalName.endsWith(`-${requestedName}`) || requestedName.endsWith(`-${externalName}`);
+      });
+      if (matches.length === 1) externalOwners = matches;
     }
     const deadline = normalizeText(task?.deadline, 20);
     if (deadline && !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) throw new Error(`Termín úkolu „${text}“ nemá platný formát.`);
+    const id = normalizeText(task?.id, 100) || makeId("TSK");
+    const existing = existingTasks.find((item) => item.id === id);
     return {
-      id: normalizeText(task?.id, 100) || makeId("TSK"),
+      id,
       text,
-      ownerId: owner?.id || "",
-      owner: owner?.name || "",
+      ownerIds: owners.map((owner) => owner.id),
+      ownerNames: owners.map((owner) => owner.name),
+      externalOwnerNames: externalOwners,
+      ownerId: owners[0]?.id || "",
+      owner: [...owners.map((owner) => owner.name), ...externalOwners].join(", "),
       deadline,
+      ...(existing?.status === "completed" ? {
+        status: "completed",
+        completionText: existing.completionText || "",
+        completionRecipientIds: existing.completionRecipientIds || [],
+        completionRecipientNames: existing.completionRecipientNames || [],
+        completedAt: existing.completedAt || "",
+        completedBy: existing.completedBy || "",
+        completedByName: existing.completedByName || "",
+      } : {}),
     };
   }).filter(Boolean);
+}
+
+function meetingTaskOwnerIds(task) {
+  return [...new Set([
+    ...(Array.isArray(task?.ownerIds) ? task.ownerIds : []),
+    task?.ownerId,
+  ].filter(Boolean))];
 }
 
 function normalizeExternalParticipants(names, teamParticipants = []) {
@@ -252,6 +296,27 @@ async function syncRecordSafe(type, record) {
   }
 }
 
+let primaryDatabaseRefresh = null;
+let primaryDatabaseRefreshedAt = 0;
+
+async function readPrimaryDatabase({ force = false } = {}) {
+  if (process.env.GOOGLE_SHEETS_PRIMARY !== "true") return readDb();
+  if (!force && Date.now() - primaryDatabaseRefreshedAt < 5000) return readDb();
+  if (!primaryDatabaseRefresh) {
+    primaryDatabaseRefresh = (async () => {
+      const snapshot = await googleWorkspace.loadDatabaseSnapshot();
+      if (snapshot.employees.length) {
+        await mutateDb(async () => ({ data: snapshot, value: null }));
+      }
+      primaryDatabaseRefreshedAt = Date.now();
+      return readDb();
+    })().finally(() => {
+      primaryDatabaseRefresh = null;
+    });
+  }
+  return primaryDatabaseRefresh;
+}
+
 async function deleteRecordSafe(type, recordId) {
   try {
     return await googleWorkspace.deleteRecord(type, recordId);
@@ -309,7 +374,7 @@ function publicGoogleStatus(employee = null) {
     driveMode: status.driveMode,
     driveAccountEmail: status.driveAccountEmail,
     driveAllowedEmail: status.driveAllowedEmail,
-    driveFolderUrl: employee?.appRole === "director" ? status.driveFolderUrl : "",
+    driveFolderUrl: isAdminRole(employee?.appRole) ? status.driveFolderUrl : "",
     spreadsheetId: status.spreadsheetId,
     error: status.error || "",
   };
@@ -323,8 +388,8 @@ function reportReviewerOnly(req, res, next) {
 }
 
 function signedReportUploaderOnly(req, res, next) {
-  if (!["manager", "director"].includes(req.auth?.employee?.appRole)) {
-    return res.status(403).json({ error: "Podepsané výkazy může nahrávat Odborný garant nebo Vedoucí služby/programu." });
+  if (!isLeaderRole(req.auth?.employee?.appRole)) {
+    return res.status(403).json({ error: "Podepsané výkazy může nahrávat Odborný garant, Vedoucí služby/programu nebo Projektový manažer." });
   }
   return next();
 }
@@ -342,8 +407,12 @@ function reviewableReports(db, reviewer) {
 }
 
 function signedUploadReports(db, uploader) {
-  if (!["manager", "director"].includes(uploader.appRole)) return [];
+  if (!isLeaderRole(uploader.appRole)) return [];
   return db.workReports.filter((report) => {
+    if (uploader.appRole === "project_manager") {
+      const owner = db.employees.find((employee) => employee.id === report.employeeId);
+      return owner?.appRole === "manager" && ["approved", "printed"].includes(report.status);
+    }
     if (report.employeeId === uploader.id) {
       const ownStatuses = uploader.appRole === "director"
         ? ["ready_for_signature", "approved", "printed"]
@@ -376,14 +445,16 @@ function assertAssignmentsAvailable(db, assignments, positions, excludedEmployee
 
 function visiblePortalData(db, employee) {
   const manager = employee.appRole === "manager";
-  const director = employee.appRole === "director";
-  const leader = manager || director;
+  const admin = isAdminRole(employee.appRole);
+  const leader = manager || admin;
   const isParticipant = (record) => (record.participantIds || []).includes(employee.id);
-  const hasAssignedTask = (record) => (record.tasks || []).some((task) => task.ownerId === employee.id);
+  const hasAssignedTask = (record) => (record.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(employee.id));
+  const hasReceivedTaskResult = (record) => (record.tasks || []).some((task) => (task.completionRecipientIds || []).includes(employee.id));
   const managerVisibleReports = db.workReports.filter((item) => item.employeeId === employee.id || canReviewReport(db, employee, item));
   return {
     employees: (leader ? db.employees : [employee]).map(publicEmployee),
-    workReports: manager ? managerVisibleReports : director
+    collaborators: db.employees.filter((item) => item.active !== false).map((item) => ({ id: item.id, name: item.name, appRole: item.appRole })),
+    workReports: manager ? managerVisibleReports : admin
       ? db.workReports
       : db.workReports.filter((item) => item.employeeId === employee.id),
     employeeEvaluations: db.employeeEvaluations.filter((item) => {
@@ -394,7 +465,8 @@ function visiblePortalData(db, employee) {
     educationPlans: db.educationPlans.filter((item) => leader || item.employeeId === employee.id),
     educationRecords: db.educationRecords.filter((item) => leader || item.employeeId === employee.id),
     supervisions: db.supervisions.filter((item) => leader || isParticipant(item)),
-    meetings: db.meetings.filter((item) => leader || isParticipant(item) || hasAssignedTask(item) || item.createdBy === employee.id),
+    meetings: db.meetings.filter((item) => leader || isParticipant(item) || hasAssignedTask(item) || hasReceivedTaskResult(item) || item.createdBy === employee.id),
+    methodologyAnswers: db.methodologyAnswers.filter((item) => item.employeeId === employee.id),
   };
 }
 
@@ -504,7 +576,7 @@ app.post("/api/setup/bootstrap", async (req, res) => {
         appRole: "manager",
         globalFte: nonnegativeNumber(req.body?.globalFte, 0.2),
         assignments: [{ id: makeId("ASG"), positionId: "expert-guarantor" }],
-        pinHash: hashPin("0000"),
+        pinHash: hashPin("1111"),
         pinMustChange: true,
         active: true,
         createdAt: now(),
@@ -524,7 +596,7 @@ app.post("/api/setup/bootstrap", async (req, res) => {
 
 app.get("/api/auth/options", async (_req, res) => {
   try {
-    const db = await readDb();
+    const db = await readPrimaryDatabase();
     res.json(db.employees.filter((item) => item.active !== false).map((item) => ({ id: item.id, name: item.name, appRole: item.appRole })));
   } catch (error) {
     res.status(500).json({ error: "Nelze načíst uživatele.", details: error.message });
@@ -537,7 +609,7 @@ app.post("/api/auth/login", async (req, res) => {
     if (isLoginBlocked(attemptKey)) {
       return res.status(429).json({ error: "Příliš mnoho neúspěšných pokusů. Přihlášení zkuste za 15 minut." });
     }
-    const db = await readDb();
+    const db = await readPrimaryDatabase();
     const employee = db.employees.find((item) => item.id === req.body?.employeeId && item.active !== false);
     if (!employee || !verifyPin(String(req.body?.pin || ""), employee.pinHash)) {
       registerFailedLogin(attemptKey);
@@ -598,10 +670,29 @@ app.post("/api/auth/change-pin", requireAuth, async (req, res) => {
 
 app.get("/api/portal", requireAuth, async (req, res) => {
   try {
-    const db = await readDb();
+    const db = await readPrimaryDatabase();
     res.json({ employee: publicEmployee(req.auth.employee), ...visiblePortalData(db, req.auth.employee), google: publicGoogleStatus(req.auth.employee) });
   } catch (error) {
     res.status(500).json({ error: "Nelze načíst portál.", details: error.message });
+  }
+});
+
+app.post("/api/methodology-answers", requireAuth, async (req, res) => {
+  try {
+    const answer = await mutateDb(async (db) => {
+      const record = createMethodologyAnswer({ employee: req.auth.employee, body: req.body, makeId, now });
+      db.methodologyAnswers.push(record);
+      addAudit(db, req.auth.employee, "answer", "methodologyAnswer", record.id, {
+        questionId: record.questionId,
+        correct: record.correct,
+        seriesId: record.seriesId,
+      });
+      return { data: db, value: record };
+    });
+    const sync = await syncRecordSafe("methodologyAnswer", answer);
+    res.status(201).json({ answer, sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
   }
 });
 
@@ -674,8 +765,11 @@ app.post("/api/employees", requireAuth, directorOnly, async (req, res) => {
     const config = await getConfig();
     const name = normalizeText(req.body?.name, 120);
     if (!name) return res.status(400).json({ error: "Jméno pracovníka je povinné." });
-    const appRole = req.body?.appRole === "manager" ? "manager" : "worker";
+    const appRole = ["manager", "project_manager"].includes(req.body?.appRole) ? req.body.appRole : "worker";
     const requestedAssignments = Array.isArray(req.body?.assignments) ? req.body.assignments : [];
+    if (appRole === "project_manager" && requestedAssignments.length) {
+      return res.status(400).json({ error: "Projektový manažer nemá vlastní pracovní výkaz ani vykazovanou pozici." });
+    }
     if (requestedAssignments.some((assignment) => assignment.positionId === "service-manager")) {
       return res.status(400).json({ error: "Pozice Vedoucí služby/programu patří pouze jejímu vlastnímu účtu." });
     }
@@ -704,7 +798,7 @@ app.post("/api/employees", requireAuth, directorOnly, async (req, res) => {
         appRole,
         globalFte: nonnegativeNumber(req.body?.globalFte, 1),
         assignments,
-        pinHash: hashPin("0000"),
+        pinHash: hashPin("1111"),
         pinMustChange: true,
         active: true,
         createdAt: now(),
@@ -715,7 +809,10 @@ app.post("/api/employees", requireAuth, directorOnly, async (req, res) => {
       return { data: db, value: item };
     });
     const sync = await syncRecordSafe("employee", employee);
-    res.status(201).json({ ...publicEmployee(employee), sync });
+    const currentDb = await readDb();
+    const linkedMeetings = currentDb.meetings.filter((meeting) => (meeting.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(employee.id)));
+    const taskSync = await Promise.all(linkedMeetings.map((meeting) => syncRecordSafe("meeting", meeting)));
+    res.status(201).json({ ...publicEmployee(employee), sync, taskSync });
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message });
   }
@@ -744,6 +841,9 @@ app.patch("/api/employees/:id", requireAuth, directorOnly, async (req, res) => {
         updatedAt: now(),
       };
       if (Array.isArray(req.body.assignments)) {
+        if (current.appRole === "project_manager" && req.body.assignments.length) {
+          throw new Error("Projektový manažer nemá vlastní pracovní výkaz ani vykazovanou pozici.");
+        }
         if (req.body.assignments.some((assignment) => assignment.positionId === "service-manager")) {
           throw new Error("Pozice Vedoucí služby/programu patří pouze jejímu vlastnímu účtu.");
         }
@@ -797,7 +897,9 @@ app.delete("/api/employees/:id", requireAuth, directorOnly, async (req, res) => 
         || db.educationPlans.some((item) => item.employeeId === current.id)
         || db.educationRecords.some((item) => item.employeeId === current.id)
         || db.supervisions.some((item) => item.createdBy === current.id || (item.participantIds || []).includes(current.id))
-        || db.meetings.some((item) => item.createdBy === current.id || (item.participantIds || []).includes(current.id));
+        || db.meetings.some((item) => item.createdBy === current.id
+          || (item.participantIds || []).includes(current.id)
+          || (item.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(current.id)));
       if (hasRecords) db.employees[index] = next;
       else db.employees.splice(index, 1);
       addAudit(db, req.auth.employee, "delete", "employee", next.id);
@@ -1007,7 +1109,7 @@ app.get("/api/work-reports/:id/signed-file", requireAuth, async (req, res) => {
     const report = db.workReports.find((item) => item.id === req.params.id);
     if (!report) return res.status(404).json({ error: "Výkaz nebyl nalezen." });
     const canPreview = report.employeeId === req.auth.employee.id
-      || req.auth.employee.appRole === "director"
+      || isAdminRole(req.auth.employee.appRole)
       || canReviewReport(db, req.auth.employee, report);
     if (!canPreview) return res.status(403).json({ error: "Tento podepsaný výkaz nemáte oprávnění zobrazit." });
 
@@ -1050,7 +1152,7 @@ app.put("/api/employee-evaluations/:year", requireAuth, leaderOnly, async (req, 
       }
       let item = db.employeeEvaluations.find((record) => record.employeeId === target.id && record.year === year);
       const linkedPlan = db.educationPlans.find((plan) => plan.employeeId === target.id && plan.year === year);
-      if (item?.status === "closed" && linkedPlan?.status === "approved" && req.auth.employee.appRole !== "director") {
+      if (item?.status === "closed" && linkedPlan?.status === "approved" && !isAdminRole(req.auth.employee.appRole)) {
         const locked = new Error("Hodnocení je uzamčené schváleným vzdělávacím plánem. Odemknout je může Vedoucí služby/programu.");
         locked.status = 409;
         throw locked;
@@ -1288,7 +1390,7 @@ app.delete("/api/education-plans/:id", requireAuth, directorOnly, async (req, re
 app.post("/api/education-records", requireAuth, leaderOnly, upload.single("certificate"), async (req, res) => {
   try {
     const { calculateInclusiveEducationHours } = await getTimeRange();
-    const leader = ["manager", "director"].includes(req.auth.employee.appRole);
+    const leader = isLeaderRole(req.auth.employee.appRole);
     const targetEmployeeId = leader && req.body.employeeId ? req.body.employeeId : req.auth.employee.id;
     let certificate = null;
     if (req.file) {
@@ -1395,7 +1497,7 @@ app.get("/api/education-records/:id/certificate", requireAuth, async (req, res) 
     if (!record) return res.status(404).json({ error: "Záznam vzdělávání nebyl nalezen." });
     const employee = db.employees.find((item) => item.id === record.employeeId);
     const canPreview = record.employeeId === req.auth.employee.id
-      || req.auth.employee.appRole === "director"
+      || isAdminRole(req.auth.employee.appRole)
       || canManageEducationPlan(req.auth.employee, employee);
     if (!canPreview) return res.status(403).json({ error: "Toto osvědčení nemáte oprávnění zobrazit." });
 
@@ -1510,7 +1612,7 @@ app.post("/api/supervisions", requireAuth, leaderOnly, async (req, res) => {
     const { calculateTimeRangeHours } = await getTimeRange();
     const record = await mutateDb(async (db) => {
       const requestedIds = Array.isArray(req.body.participantIds) ? req.body.participantIds : [];
-      const participantIds = ["manager", "director"].includes(req.auth.employee.appRole) ? requestedIds : [req.auth.employee.id];
+      const participantIds = isLeaderRole(req.auth.employee.appRole) ? requestedIds : [req.auth.employee.id];
       const participants = db.employees.filter((item) => participantIds.includes(item.id));
       const timeFrom = normalizeText(req.body.timeFrom, 10);
       const timeTo = normalizeText(req.body.timeTo, 10);
@@ -1551,7 +1653,7 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
         externalParticipantNames,
         participantNames: [...participants.map((item) => item.name), ...externalParticipantNames], agenda: "",
         notes: normalizeText(req.body.content || req.body.notes, 40000), decisions: "",
-        tasks: normalizeMeetingTasks(db, req.body.tasks),
+        tasks: normalizeMeetingTasks(db, req.body.tasks, externalParticipantNames),
         status: req.body.status === "submitted" ? "submitted" : "draft",
         createdBy: req.auth.employee.id, createdByName: req.auth.employee.name,
         createdAt: now(), updatedAt: now(),
@@ -1564,7 +1666,7 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
     const sync = await syncRecordSafe("meeting", meeting);
     res.status(201).json({ meeting, sync });
     if (meeting.status !== "draft") {
-      const ownerIds = (meeting.tasks || []).map((task) => task.ownerId).filter(Boolean);
+      const ownerIds = [...new Set((meeting.tasks || []).flatMap(meetingTaskOwnerIds))];
       void sendPushToEmployees(ownerIds, {
         title: "Nový úkol z porady",
         body: `V zápisu z ${meeting.date} máte přiřazený nový úkol.`,
@@ -1586,12 +1688,12 @@ app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
         missing.status = 404;
         throw missing;
       }
-      if (item.status === "archived" && req.auth.employee.appRole !== "director") {
+      if (item.status === "archived" && !isAdminRole(req.auth.employee.appRole)) {
         const archived = new Error("Hotový zápis smí zpětně upravit pouze Vedoucí služby/programu.");
         archived.status = 403;
         throw archived;
       }
-      if (req.auth.employee.appRole !== "director" && item.createdBy !== req.auth.employee.id) {
+      if (!isAdminRole(req.auth.employee.appRole) && item.createdBy !== req.auth.employee.id) {
         const forbidden = new Error("Tento koncept může upravit pouze jeho autor nebo Vedoucí služby/programu.");
         forbidden.status = 403;
         throw forbidden;
@@ -1608,7 +1710,7 @@ app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
       item.externalParticipantNames = externalParticipantNames;
       item.participantNames = [...participants.map((employee) => employee.name), ...externalParticipantNames];
       item.notes = notes;
-      item.tasks = normalizeMeetingTasks(db, req.body.tasks);
+      item.tasks = normalizeMeetingTasks(db, req.body.tasks, externalParticipantNames, item.tasks || []);
       item.status = req.body.status === "submitted" ? "submitted" : "draft";
       item.updatedAt = now();
       addAudit(db, req.auth.employee, "update", "meeting", item.id);
@@ -1617,7 +1719,7 @@ app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
     const sync = await syncRecordSafe("meeting", meeting);
     res.json({ meeting, sync });
     if (meeting.status !== "draft") {
-      const ownerIds = (meeting.tasks || []).map((task) => task.ownerId).filter(Boolean);
+      const ownerIds = [...new Set((meeting.tasks || []).flatMap(meetingTaskOwnerIds))];
       void sendPushToEmployees(ownerIds, {
         title: "Úkoly z porady byly aktualizovány",
         body: `Zkontrolujte své úkoly ze zápisu z ${meeting.date}.`,
@@ -1625,6 +1727,72 @@ app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
         tag: `meeting-task-${meeting.id}`,
       }).catch((error) => console.error("Meeting task notification failed:", error.message));
     }
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.patch("/api/meetings/:meetingId/tasks/:taskId/complete", requireAuth, async (req, res) => {
+  try {
+    const completionText = normalizeText(req.body?.completionText, 5000);
+    const requestedRecipientIds = Array.isArray(req.body?.recipientIds)
+      ? [...new Set(req.body.recipientIds.map((id) => normalizeText(id, 100)).filter(Boolean))]
+      : [];
+    if (!completionText) return res.status(400).json({ error: "Napište stručné řešení úkolu." });
+    if (!requestedRecipientIds.length) return res.status(400).json({ error: "Vyberte alespoň jednoho příjemce řešení." });
+
+    const result = await mutateDb(async (db) => {
+      const meeting = db.meetings.find((item) => item.id === req.params.meetingId);
+      if (!meeting) {
+        const missing = new Error("Porada nebyla nalezena.");
+        missing.status = 404;
+        throw missing;
+      }
+      if (meeting.status === "draft") {
+        const invalidState = new Error("Úkol lze splnit až po dokončení zápisu z porady.");
+        invalidState.status = 409;
+        throw invalidState;
+      }
+      const task = (meeting.tasks || []).find((item) => item.id === req.params.taskId);
+      if (!task) {
+        const missing = new Error("Úkol nebyl nalezen.");
+        missing.status = 404;
+        throw missing;
+      }
+      if (!meetingTaskOwnerIds(task).includes(req.auth.employee.id) && !isAdminRole(req.auth.employee.appRole)) {
+        const forbidden = new Error("Tento úkol může splnit pouze odpovědná osoba.");
+        forbidden.status = 403;
+        throw forbidden;
+      }
+      if (task.status === "completed") {
+        const conflict = new Error("Úkol už byl označen jako splněný.");
+        conflict.status = 409;
+        throw conflict;
+      }
+      const recipients = db.employees.filter((employee) => employee.active !== false && requestedRecipientIds.includes(employee.id));
+      if (recipients.length !== requestedRecipientIds.length) throw new Error("Některého z vybraných příjemců se nepodařilo najít.");
+      const timestamp = now();
+      Object.assign(task, {
+        status: "completed",
+        completionText,
+        completionRecipientIds: recipients.map((employee) => employee.id),
+        completionRecipientNames: recipients.map((employee) => employee.name),
+        completedAt: timestamp,
+        completedBy: req.auth.employee.id,
+        completedByName: req.auth.employee.name,
+      });
+      meeting.updatedAt = timestamp;
+      addAudit(db, req.auth.employee, "complete_task", "meeting", meeting.id, { taskId: task.id, recipientIds: task.completionRecipientIds });
+      return { data: db, value: { meeting, task } };
+    });
+    const sync = await syncRecordSafe("meeting", result.meeting);
+    res.json({ task: result.task, meeting: result.meeting, sync });
+    void sendPushToEmployees(result.task.completionRecipientIds, {
+      title: "Úkol z porady byl splněn",
+      body: `${result.task.completedByName} odeslal/a řešení úkolu: ${result.task.text}`,
+      url: "/?open=meetings",
+      tag: `meeting-task-completed-${result.task.id}`,
+    }).catch((error) => console.error("Meeting task completion notification failed:", error.message));
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message });
   }
@@ -1732,7 +1900,7 @@ app.post("/api/meetings/:id/pdf", requireAuth, leaderOnly, upload.single("file")
     const db = await readDb();
     const meeting = db.meetings.find((item) => item.id === req.params.id);
     if (!meeting) return res.status(404).json({ error: "Porada nebyla nalezena." });
-    if (!["manager", "director"].includes(req.auth.employee.appRole) && meeting.createdBy !== req.auth.employee.id) return res.status(403).json({ error: "PDF této porady nemůžete uložit." });
+    if (!isLeaderRole(req.auth.employee.appRole) && meeting.createdBy !== req.auth.employee.id) return res.status(403).json({ error: "PDF této porady nemůžete uložit." });
     const uploaded = await googleWorkspace.uploadFile({
       name: `${meeting.date}__zapis_z_porady.pdf`, mimeType: "application/pdf", buffer: req.file.buffer,
       pathSegments: [String(new Date(meeting.date).getFullYear()), "Porady"],
@@ -1879,15 +2047,11 @@ async function startServer() {
   const sheets = await googleWorkspace.ensureSheets();
   if (sheets.ready) console.log(`Google Sheets ready: ${sheets.sheets.join(", ")}`);
   if (process.env.GOOGLE_SHEETS_PRIMARY === "true") {
-    const local = await readDb();
-    if (!local.employees.length) {
-      const snapshot = await googleWorkspace.loadDatabaseSnapshot();
-      if (snapshot.employees.length) {
-        await writeDb(snapshot);
-        console.log(`Database restored from Google Sheets (${snapshot.employees.length} employees).`);
-      } else {
-        console.log("Google Sheets snapshot is empty; initial application setup is required.");
-      }
+    const database = await readPrimaryDatabase({ force: true });
+    if (database.employees.length) {
+      console.log(`Database refreshed from Google Sheets (${database.employees.length} employees).`);
+    } else {
+      console.log("Google Sheets snapshot is empty; initial application setup is required.");
     }
   }
   app.listen(PORT, () => {

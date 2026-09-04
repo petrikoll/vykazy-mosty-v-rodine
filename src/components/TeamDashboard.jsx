@@ -18,6 +18,7 @@ function formatHours(value) {
 }
 
 function positionNames(employee, positions) {
+  if (employee.appRole === "project_manager") return ["Projektový manažer"];
   return (employee.assignments || [])
     .map((assignment) => positions.find((position) => position.id === assignment.positionId)?.name)
     .filter(Boolean);
@@ -25,8 +26,9 @@ function positionNames(employee, positions) {
 
 export default function TeamDashboard({ portal, positions, onNavigate }) {
   const [year, setYear] = useState(initialYear);
+  const isAdmin = ["director", "project_manager"].includes(portal.employee.appRole);
   const visibleEmployees = useMemo(() => portal.employees.filter((employee) => employee.active !== false
-    && (portal.employee.appRole === "director" || employee.id === portal.employee.id || employee.appRole === "worker")), [portal.employee, portal.employees]);
+    && (isAdmin || employee.id === portal.employee.id || employee.appRole === "worker")), [portal.employee.id, portal.employees, isAdmin]);
 
   const rows = useMemo(() => visibleEmployees.map((employee) => {
     const educationRecords = portal.educationRecords.filter((record) => record.employeeId === employee.id
@@ -36,7 +38,7 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
     const reports = portal.workReports.filter((report) => report.employeeId === employee.id && Number(report.year) === year);
     const plan = portal.educationPlans.find((item) => item.employeeId === employee.id && Number(item.year) === year);
     const meetingTasks = portal.meetings.filter((meeting) => meeting.status !== "draft" && recordYear(meeting.date) === year)
-      .flatMap((meeting) => (meeting.tasks || []).filter((task) => task.ownerId === employee.id));
+      .flatMap((meeting) => (meeting.tasks || []).filter((task) => ([...(task.ownerIds || []), task.ownerId].includes(employee.id)) && task.status !== "completed"));
     return {
       employee,
       positions: positionNames(employee, positions),
@@ -48,6 +50,7 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
       returnedReportCount: reports.filter((report) => report.status === "returned").length,
       planStatus: plan?.status || "missing_plan",
       taskCount: meetingTasks.length,
+      projectManager: employee.appRole === "project_manager",
     };
   }), [portal.educationPlans, portal.educationRecords, portal.meetings, portal.supervisions, portal.workReports, positions, visibleEmployees, year]);
 
@@ -77,10 +80,10 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
           <thead><tr className="border-b border-slate-200 text-xs uppercase text-slate-500"><th className="px-2 py-2">Pracovník a pozice</th><th className="px-2 py-2 text-right">Vzdělávání</th><th className="px-2 py-2 text-right">Supervize</th><th className="px-2 py-2">Vzdělávací plán</th><th className="px-2 py-2">Výkazy práce</th><th className="px-2 py-2 text-right">Úkoly</th></tr></thead>
           <tbody>{rows.map((row) => <tr key={row.employee.id} className="border-b border-slate-100 last:border-0">
             <td className="px-2 py-2.5"><strong className="text-slate-950">{row.employee.name}</strong><div className="mt-0.5 text-xs text-slate-500">{row.positions.join(" · ") || "Bez přiřazené pozice"}</div></td>
-            <td className="px-2 py-2.5 text-right"><button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("education")}>{formatHours(row.educationHours)} h</button></td>
+            <td className="px-2 py-2.5 text-right">{row.projectManager ? <span className="text-slate-400">—</span> : <button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("education")}>{formatHours(row.educationHours)} h</button>}</td>
             <td className="px-2 py-2.5 text-right"><button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("supervisions")}>{formatHours(row.supervisionHours)} h</button><div className="text-[11px] text-slate-500">{row.supervisionCount} záznamů</div></td>
-            <td className="px-2 py-2.5"><button onClick={() => onNavigate("education")}><StatusBadge status={row.planStatus}/></button></td>
-            <td className="px-2 py-2.5"><button className="text-left hover:underline" onClick={() => onNavigate("reports")}><strong>{row.approvedReportCount} schváleno</strong><span className="text-slate-500"> / {row.reportCount} celkem</span>{row.returnedReportCount > 0 && <span className="block text-xs font-bold text-red-700">{row.returnedReportCount} vráceno</span>}</button></td>
+            <td className="px-2 py-2.5">{row.projectManager ? <span className="text-xs font-semibold text-slate-500">Nevyžaduje se</span> : <button onClick={() => onNavigate("education")}><StatusBadge status={row.planStatus}/></button>}</td>
+            <td className="px-2 py-2.5">{row.projectManager ? <span className="text-xs font-semibold text-slate-500">Nevyžaduje se</span> : <button className="text-left hover:underline" onClick={() => onNavigate("reports")}><strong>{row.approvedReportCount} schváleno</strong><span className="text-slate-500"> / {row.reportCount} celkem</span>{row.returnedReportCount > 0 && <span className="block text-xs font-bold text-red-700">{row.returnedReportCount} vráceno</span>}</button>}</td>
             <td className="px-2 py-2.5 text-right"><button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("meetings")}>{row.taskCount}</button></td>
           </tr>)}</tbody>
         </table>

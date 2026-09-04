@@ -3,7 +3,13 @@ import { ExternalLink, HardDrive, Link2, Pencil, Save, Settings as SettingsIcon,
 import { api, jsonBody } from "../api.mjs";
 import { Button, Card, Field, Input, Notice, Select, useTimedNotice } from "./Common.jsx";
 
-const roleLabel = (role) => role === "manager" ? "Odborný garant" : "Pracovník";
+const roleLabel = (role) => role === "manager"
+  ? "Odborný garant"
+  : role === "director"
+    ? "Vedoucí služby/programu"
+    : role === "project_manager"
+      ? "Projektový manažer"
+      : "Pracovník";
 
 function PositionChoices({ positions, selectedIds, onToggle, lockedIds = [] }) {
   if (!positions.length) return <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">Žádná volná pozice pro tento typ účtu.</p>;
@@ -22,11 +28,14 @@ export default function Settings({ portal, positions, onRefresh }) {
   const [notice, setNotice] = useTimedNotice();
   const [busy, setBusy] = useState(false);
   const assignablePositions = useMemo(() => positions.filter((item) => item.active !== false && item.reportRequired), [positions]);
-  const managedEmployees = portal.employees.filter((item) => item.id !== portal.employee.id && item.active !== false);
+  const managedEmployees = portal.employees.filter((item) => item.id !== portal.employee.id
+    && item.active !== false
+    && !(portal.employee.appRole === "project_manager" && item.appRole === "director"));
   const occupiedPositionIds = (excludedEmployeeId = "") => new Set(portal.employees
     .filter((item) => item.active !== false && item.id !== excludedEmployeeId)
     .flatMap((item) => (item.assignments || []).map((assignment) => assignment.positionId)));
   const positionsForRole = (appRole, excludedEmployeeId = "") => {
+    if (appRole === "project_manager") return [];
     const occupied = occupiedPositionIds(excludedEmployeeId);
     return assignablePositions.filter((position) => position.id !== "service-manager"
       && (appRole === "manager" || position.id !== "expert-guarantor")
@@ -49,7 +58,7 @@ export default function Settings({ portal, positions, onRefresh }) {
         assignments: employeeForm.positionIds.map((positionId) => ({ positionId })),
       }) });
       setEmployeeForm({ name: "", globalFte: 1, appRole: "worker", positionIds: [] });
-      setNotice({ type: "success", text: `${roleLabel(employeeForm.appRole)} byl založen s dočasným PINem 0000.` });
+      setNotice({ type: "success", text: `${roleLabel(employeeForm.appRole)} byl založen s dočasným PINem 1111.` });
       await onRefresh();
     } catch (error) { setNotice({ type: "error", text: error.message }); }
     finally { setBusy(false); }
@@ -102,7 +111,9 @@ export default function Settings({ portal, positions, onRefresh }) {
   const changeRole = (appRole) => setEmployeeForm((form) => ({
     ...form,
     appRole,
-    positionIds: appRole === "manager"
+    positionIds: appRole === "project_manager"
+      ? []
+      : appRole === "manager"
       ? (managerPositionOccupied ? [] : ["expert-guarantor"])
       : form.positionIds.filter((positionId) => positionId !== "expert-guarantor"),
   }));
@@ -144,15 +155,15 @@ export default function Settings({ portal, positions, onRefresh }) {
       </div>}
     </Card>
 
-    <Card title="Nastavení pracovníků" subtitle="Tuto část vidí pouze Vedoucí služby/programu. Zde zakládá osobní účty a přiřazuje k nim jednu nebo více projektových pozic." actions={<SettingsIcon size={22} className="text-blue-700"/>}>
+    <Card title="Nastavení pracovníků" subtitle="Tuto část vidí Vedoucí služby/programu a Projektový manažer. Zde zakládají osobní účty a přiřazují k nim projektové pozice." actions={<SettingsIcon size={22} className="text-blue-700"/>}>
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="Jméno pracovníka"><Input value={employeeForm.name} onChange={(event) => setEmployeeForm((form) => ({ ...form, name: event.target.value }))}/></Field>
-        <Field label="Typ účtu"><Select value={employeeForm.appRole} onChange={(event) => changeRole(event.target.value)}><option value="worker">Pracovník</option><option value="manager" disabled={managerPositionOccupied}>Odborný garant{managerPositionOccupied ? " · již obsazeno" : ""}</option></Select></Field>
+        <Field label="Typ účtu"><Select value={employeeForm.appRole} onChange={(event) => changeRole(event.target.value)}><option value="worker">Pracovník</option><option value="manager" disabled={managerPositionOccupied}>Odborný garant{managerPositionOccupied ? " · již obsazeno" : ""}</option><option value="project_manager">Projektový manažer · bez výkazu a vzdělávacího plánu</option></Select></Field>
         <Field label="Celkový úvazek u zaměstnavatele"><Input type="number" min="0" step="0.1" value={employeeForm.globalFte} onChange={(event) => setEmployeeForm((form) => ({ ...form, globalFte: event.target.value }))}/></Field>
       </div>
-      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Dočasný PIN nového účtu je 0000.</strong> Přihlášení probíhá podle jména a pracovník si PIN následně změní sám.</div>
+      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Dočasný PIN nového účtu je 1111.</strong> Přihlášení probíhá podle jména a pracovník si PIN následně změní sám.</div>
       <div className="mt-4"><div className="mb-2 text-sm font-bold text-slate-700">Volné projektové pozice</div><PositionChoices positions={positionsForRole(employeeForm.appRole)} selectedIds={employeeForm.positionIds} lockedIds={employeeForm.appRole === "manager" ? ["expert-guarantor"] : []} onToggle={toggleNewPosition}/><p className="mt-2 text-xs text-slate-500">Pozice, které už má přiřazené jiný aktivní pracovník, se zde nenabízejí.</p></div>
-      <Button className="mt-4" disabled={busy || !employeeForm.name.trim() || !employeeForm.positionIds.length} onClick={addEmployee}><Users className="mr-2 inline" size={17}/>Přidat pracovníka</Button>
+      <Button className="mt-4" disabled={busy || !employeeForm.name.trim() || (employeeForm.appRole !== "project_manager" && !employeeForm.positionIds.length)} onClick={addEmployee}><Users className="mr-2 inline" size={17}/>Přidat pracovníka</Button>
     </Card>
 
     <Card title="Pracovníci a jejich pozice" subtitle="Pozice lze kdykoli doplnit nebo odebrat. Přihlášení zůstává stále pod jedním jménem.">
@@ -168,7 +179,7 @@ export default function Settings({ portal, positions, onRefresh }) {
             <div className="mb-3 max-w-md"><Field label="Jméno pracovníka"><Input value={editName} onChange={(event) => setEditName(event.target.value)}/></Field></div>
             <div className="mb-2 text-xs font-bold text-slate-700">Projektové pozice</div>
             <PositionChoices positions={positionsForRole(employee.appRole, employee.id)} selectedIds={editPositionIds} lockedIds={employee.appRole === "manager" ? ["expert-guarantor"] : []} onToggle={toggleEditedPosition}/>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><Button disabled={busy || !editName.trim() || !editPositionIds.length} onClick={() => saveEmployee(employee)}><Save className="mr-1 inline" size={16}/>Uložit pracovníka</Button><Button variant="danger" disabled={busy} onClick={() => deleteEmployee(employee)}><Trash2 className="mr-1 inline" size={16}/>Smazat pracovníka</Button></div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><Button disabled={busy || !editName.trim() || (employee.appRole !== "project_manager" && !editPositionIds.length)} onClick={() => saveEmployee(employee)}><Save className="mr-1 inline" size={16}/>Uložit pracovníka</Button><Button variant="danger" disabled={busy} onClick={() => deleteEmployee(employee)}><Trash2 className="mr-1 inline" size={16}/>Smazat pracovníka</Button></div>
           </div>}
         </section>)}
       </div>}

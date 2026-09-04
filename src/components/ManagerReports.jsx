@@ -106,6 +106,8 @@ function ReportsTable({ rows, busy, onSelect }) {
 
 export default function ManagerReports({ portal, positions, project, onRefresh }) {
   const isDirector = portal.employee.appRole === "director";
+  const isProjectManager = portal.employee.appRole === "project_manager";
+  const isAdmin = isDirector || isProjectManager;
   const [view, setView] = useState("team");
   const [period, setPeriod] = useState(() => defaultPeriod(project));
   const [selectedReport, setSelectedReport] = useState(null);
@@ -116,7 +118,7 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
   const rows = useMemo(() => {
     const visibleEmployees = portal.employees.filter((employee) => employee.id !== portal.employee.id
       && employee.active !== false
-      && (isDirector || employee.appRole === "worker"));
+      && (isAdmin || employee.appRole === "worker"));
     const expectedRows = visibleEmployees.flatMap((employee) => (employee.assignments || []).map((assignment) => {
       const position = positions.find((item) => item.id === assignment.positionId);
       if (!position || position.active === false || !position.reportRequired) return null;
@@ -125,7 +127,7 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
       return { employee, assignment, position, report, status: report?.status || "missing" };
     }).filter(Boolean));
 
-    if (!isDirector) {
+    if (!isAdmin) {
       return expectedRows.sort((a, b) => a.employee.name.localeCompare(b.employee.name, "cs") || a.position.name.localeCompare(b.position.name, "cs"));
     }
 
@@ -163,7 +165,7 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
 
     return [...expectedRows, ...storedRows]
       .sort((a, b) => a.employee.name.localeCompare(b.employee.name, "cs") || a.position.name.localeCompare(b.position.name, "cs"));
-  }, [portal.employee.id, portal.employees, portal.workReports, positions, period, isDirector]);
+  }, [portal.employee.id, portal.employees, portal.workReports, positions, period, isAdmin]);
 
   const receivedCount = rows.filter((row) => acceptedStatuses.has(row.status)).length;
   const approvedReports = rows
@@ -171,7 +173,7 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
     .map((row) => row.report);
   const canReviewReport = (report) => {
     const owner = portal.employees.find((employee) => employee.id === report?.employeeId);
-    return Boolean(report && (isDirector ? owner?.appRole === "manager" : owner?.appRole === "worker"));
+    return Boolean(report && (isDirector ? owner?.appRole === "manager" : !isProjectManager && owner?.appRole === "worker"));
   };
   const pendingRows = rows.filter((row) => row.report?.status === "submitted" && canReviewReport(row.report));
   const pendingReportIds = new Set(pendingRows.map((row) => row.report.id));
@@ -219,7 +221,7 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
     } catch (error) { setMessage(error.message); } finally { setBusy(false); }
   };
 
-  const viewSwitch = <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-300 bg-blue-50 p-1 shadow-md shadow-slate-200/60">
+  const viewSwitch = isProjectManager ? null : <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-300 bg-blue-50 p-1 shadow-md shadow-slate-200/60">
     <button onClick={() => setView("team")} className={`min-h-9 rounded-md px-3 py-1.5 text-sm font-bold ${view === "team" ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{isDirector ? "Výkazy týmu" : "Přehled týmu"}</button>
     <button onClick={() => setView("own")} className={`min-h-9 rounded-md px-3 py-1.5 text-sm font-bold ${view === "own" ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}>Můj výkaz</button>
   </div>;
@@ -235,7 +237,7 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
         onRefresh={onRefresh}
         selfManaged={!isDirector}
         topLevel={isDirector}
-        canDelete={isDirector}
+        canDelete={isAdmin}
       />
     </div>;
   }
@@ -244,12 +246,12 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
     {viewSwitch}
     <Notice notice={notice}/>
     {message && <div className="rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{message}</div>}
-    <Card title={isDirector ? "Výkazy týmu" : "Kontrola měsíčních výkazů"} subtitle={`${receivedCount} z ${rows.length} očekávaných výkazů je předáno nebo zpracováno.`}>
+    <Card title={isAdmin ? "Výkazy týmu" : "Kontrola měsíčních výkazů"} subtitle={`${receivedCount} z ${rows.length} očekávaných výkazů je předáno nebo zpracováno.`}>
       <div className="mb-4 grid grid-cols-2 gap-2 sm:max-w-xl">
         <Field label="Měsíc"><Select value={period.month} onChange={(event) => setPeriod((current) => ({ ...current, month: Number(event.target.value) }))}>{MONTHS.map((label, index) => <option key={label} value={index + 1}>{label}</option>)}</Select></Field>
         <Field label="Rok"><Select value={period.year} onChange={(event) => setPeriod((current) => ({ ...current, year: Number(event.target.value) }))}>{Array.from({ length: new Date(project.endDate).getFullYear() - new Date(project.startDate).getFullYear() + 1 }, (_, index) => new Date(project.startDate).getFullYear() + index).map((year) => <option key={year}>{year}</option>)}</Select></Field>
       </div>
-      {!rows.length ? <Empty>{isDirector ? "Pro tento měsíc nejsou žádné týmové výkazy." : "Nejsou založeni žádní pracovníci s pozicí, pro kterou se vytváří měsíční výkaz."}</Empty> : isDirector ? <div className="space-y-5">
+      {!rows.length ? <Empty>{isAdmin ? "Pro tento měsíc nejsou žádné týmové výkazy." : "Nejsou založeni žádní pracovníci s pozicí, pro kterou se vytváří měsíční výkaz."}</Empty> : isAdmin ? <div className="space-y-5">
         {pendingRows.length > 0 && <section className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50/60">
           <div className="border-b border-amber-200 px-3 py-2">
             <h3 className="font-bold text-slate-900">Čeká na vaše schválení ({pendingRows.length})</h3>
@@ -266,13 +268,15 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
 
     <SignedReportUpload
       onRefresh={onRefresh}
-      canOpenDrive={isDirector}
+      canOpenDrive={isAdmin}
       driveFolderUrl={portal.google.driveFolderUrl}
       title="Hromadné nahrání podepsaných výkazů"
       subtitle={isDirector
         ? "Vedoucí služby/programu může nahrát společný PDF, několik samostatných PDF nebo ZIP. Nabídnou se schválené výkazy Odborného garanta i její vlastní výkaz připravený k podpisu."
+        : isProjectManager
+          ? "Projektový manažer může nahrát podepsané, již schválené výkazy Odborného garanta. Vlastní výkaz nemá."
         : "Odborný garant může nahrát společný PDF, několik samostatných PDF nebo ZIP. Nabídnou se schválené výkazy pracovníků a vlastní schválený výkaz."}
     />
-    {selectedReport && <ReportDetail report={selectedReport} reviewerRole={portal.employee.appRole} busy={busy} canDelete={isDirector} canReview={canReviewReport(selectedReport)} onClose={() => setSelectedReport(null)} onDelete={deleteReport} onDownload={download} onPreview={previewSignedReport} onStatusChange={changeStatus}/>}
+    {selectedReport && <ReportDetail report={selectedReport} reviewerRole={portal.employee.appRole} busy={busy} canDelete={isAdmin} canReview={canReviewReport(selectedReport)} onClose={() => setSelectedReport(null)} onDelete={deleteReport} onDownload={download} onPreview={previewSignedReport} onStatusChange={changeStatus}/>}
   </div>;
 }

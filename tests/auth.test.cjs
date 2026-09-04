@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { directorOnly, hashPin, leaderOnly, publicEmployee, verifyPin } = require("../server/auth.cjs");
+const { directorOnly, hashPin, isAdminRole, isLeaderRole, leaderOnly, publicEmployee, verifyPin } = require("../server/auth.cjs");
 
 const defaultHash = hashPin("0000");
 
@@ -17,6 +17,11 @@ assert.deepEqual(
 let allowed = false;
 directorOnly({ auth: { employee: { appRole: "director" } } }, {}, () => { allowed = true; });
 assert.equal(allowed, true, "service/program manager may open settings endpoints");
+allowed = false;
+directorOnly({ auth: { employee: { appRole: "project_manager" } } }, {}, () => { allowed = true; });
+assert.equal(allowed, true, "project manager may open settings endpoints");
+assert.equal(isAdminRole("project_manager"), true, "project manager has administrative data access");
+assert.equal(isLeaderRole("project_manager"), true, "project manager may maintain shared records");
 
 let deniedStatus = 0;
 let deniedPayload = null;
@@ -26,9 +31,9 @@ directorOnly(
   () => assert.fail("expert guarantor must not access settings endpoints")
 );
 assert.equal(deniedStatus, 403, "expert guarantor is denied settings endpoints");
-assert.match(deniedPayload.error, /Vedoucí služby\/programu/, "permission error names the responsible role");
+assert.match(deniedPayload.error, /Vedoucí služby\/programu nebo Projektový manažer/, "permission error names both administrative roles");
 
-for (const appRole of ["manager", "director"]) {
+for (const appRole of ["manager", "director", "project_manager"]) {
   let leaderAllowed = false;
   leaderOnly({ auth: { employee: { appRole } } }, {}, () => { leaderAllowed = true; });
   assert.equal(leaderAllowed, true, `${appRole} may write shared personnel records`);
@@ -42,6 +47,6 @@ leaderOnly(
   () => assert.fail("worker must not write education, supervision, or meeting records")
 );
 assert.equal(deniedStatus, 403, "worker is denied shared-record write endpoints");
-assert.match(deniedPayload.error, /Odbornému garantovi nebo Vedoucí služby\/programu/, "permission error names both allowed roles");
+assert.match(deniedPayload.error, /Odborný garant, Vedoucí služby\/programu nebo Projektový manažer/, "permission error names all allowed roles");
 
 console.log("auth tests passed");

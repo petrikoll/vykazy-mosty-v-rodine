@@ -1,4 +1,19 @@
 const TOKEN_KEY = "mosty-portal-session-v1";
+let pendingCriticalRequests = 0;
+
+function beginCriticalRequest(options) {
+  const method = String(options?.method || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD") return false;
+  pendingCriticalRequests += 1;
+  if (document.body) document.body.dataset.criticalOperation = "true";
+  return true;
+}
+
+function finishCriticalRequest(tracked) {
+  if (!tracked) return;
+  pendingCriticalRequests = Math.max(0, pendingCriticalRequests - 1);
+  if (document.body && pendingCriticalRequests === 0) delete document.body.dataset.criticalOperation;
+}
 
 export const getToken = () => window.localStorage.getItem(TOKEN_KEY) || "";
 export const setToken = (token) => token
@@ -12,28 +27,38 @@ export async function api(path, options = {}) {
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(path, { ...options, headers });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(payload.details || payload.error || `HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
+  const tracked = beginCriticalRequest(options);
+  try {
+    const response = await fetch(path, { ...options, headers });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.details || payload.error || `HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return payload;
+  } finally {
+    finishCriticalRequest(tracked);
   }
-  return payload;
 }
 
 export async function apiBlob(path, options = {}) {
   const headers = new Headers(options.headers || {});
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(path, { ...options, headers });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    const error = new Error(payload.details || payload.error || `HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
+  const tracked = beginCriticalRequest(options);
+  try {
+    const response = await fetch(path, { ...options, headers });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const error = new Error(payload.details || payload.error || `HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return response.blob();
+  } finally {
+    finishCriticalRequest(tracked);
   }
-  return response.blob();
 }
 
 export async function openApiFilePreview(path) {

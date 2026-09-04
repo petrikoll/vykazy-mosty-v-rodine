@@ -1,0 +1,1802 @@
+[
+  {
+    "id": "SAS-001",
+    "standard": "1",
+    "source": "Standard 1.1 – Poslání služby.",
+    "topic": "Poslání služby",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Co nejlépe vystihuje poslání SAS Emcéčko?",
+    "answers": [
+      {
+        "id": "SAS-001-A",
+        "text": "Poskytovat odbornou podporu rodinám v nepříznivé sociální situaci, stabilizovat jejich fungování a posilovat rodičovské kompetence."
+      },
+      {
+        "id": "SAS-001-B",
+        "text": "Přebírat za rodinu řešení klíčových problémů v době, kdy je sama nedokáže účinně zvládat, aby se situace rychle stabilizovala."
+      },
+      {
+        "id": "SAS-001-C",
+        "text": "Zaměřovat podporu hlavně na vzdělávání a volný čas dětí a ostatní problémy rodiny předávat návazným službám."
+      }
+    ],
+    "correctAnswerId": "SAS-001-A",
+    "explanation": "Služba má rodinu odborně podporovat a posilovat její schopnost situaci zvládat, nikoli přebírat její odpovědnost.",
+    "competency": "Porozumění základnímu smyslu služby.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-002",
+    "standard": "1",
+    "source": "Standard 1.4 – Zásady poskytování služby.",
+    "topic": "Nejlepší zájem dítěte",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Který zájem má být při rozhodování pracovníka SAS prioritní?",
+    "answers": [
+      {
+        "id": "SAS-002-A",
+        "text": "Přání dospělého klienta bez ohledu na dopad na dítě."
+      },
+      {
+        "id": "SAS-002-B",
+        "text": "Nejlepší zájem a blaho dítěte."
+      },
+      {
+        "id": "SAS-002-C",
+        "text": "Organizačně nejjednodušší řešení pro službu."
+      }
+    ],
+    "correctAnswerId": "SAS-002-B",
+    "explanation": "Metodika stanovuje, že zájem dítěte je prioritní a má přednost před zájmy dospělých.",
+    "competency": "Znalost klíčového hodnotového principu služby.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-003",
+    "standard": "1",
+    "source": "Standard 1.4 – Aktivizace a soběstačnost; Standard 1.5 – Pomoc při uplatňování práv a obstarávání osobních záležitostí.",
+    "topic": "Aktivizace a soběstačnost",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Klient má několik nevyřízených žádostí na úřadech a požádá pracovníka: „Vy tomu rozumíte, tak to všechno vyřiďte za mě.“ Jaký postup nejlépe odpovídá metodice?",
+    "answers": [
+      {
+        "id": "SAS-003-A",
+        "text": "Převzít vyřizování, protože rychlý výsledek je důležitější než způsob řešení."
+      },
+      {
+        "id": "SAS-003-B",
+        "text": "Administrativní záležitosti odmítnout, protože nepatří mezi činnosti SAS."
+      },
+      {
+        "id": "SAS-003-C",
+        "text": "Klienta při vyřizování podpořit a podle potřeby doprovodit tak, aby se postupně zapojoval a zvládal jej samostatně."
+      }
+    ],
+    "correctAnswerId": "SAS-003-C",
+    "explanation": "SAS poskytuje administrativní podporu a doprovod, ale současně má klienta aktivizovat a vést k samostatnosti.",
+    "competency": "Rozlišení podpory od převzetí odpovědnosti za klienta.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-004",
+    "standard": "1",
+    "source": "Standard 1.4 a Standard 5.4 – Zapojení rodiny a dítěte do plánování.",
+    "topic": "Participace dítěte",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Rodič nechce, aby se jeho desetileté dítě vyjadřovalo k plánované podpoře rodiny. Dítě přitom samo pracovníkovi sděluje, že má k situaci co říct. Jaký postup nejlépe odpovídá metodice?",
+    "answers": [
+      {
+        "id": "SAS-004-A",
+        "text": "Rodiči vysvětlit význam přiměřeného zapojení dítěte, vytvořit dítěti bezpečný prostor k vyjádření a jeho názor zohlednit bez přenášení odpovědnosti za plán na dítě."
+      },
+      {
+        "id": "SAS-004-B",
+        "text": "Respektovat nesouhlas rodiče a názor dítěte do plánování nezahrnovat, dokud rodič výslovně nesouhlasí s jeho přímým zapojením."
+      },
+      {
+        "id": "SAS-004-C",
+        "text": "Vést plánování s dítětem odděleně od rodiče a jeho vyjádření použít jako rozhodující podklad pro další postup služby."
+      }
+    ],
+    "correctAnswerId": "SAS-004-A",
+    "explanation": "Metodika kombinuje respekt k rodině s přiměřeným zapojením dítěte podle jeho věku a schopnosti porozumět. Názor dítěte má být slyšen a zohledněn, ale dítě nepřebírá odpovědnost za celý plán.",
+    "competency": "Schopnost současně pracovat s autonomií rodiny a právem dítěte na participaci.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-005",
+    "standard": "2",
+    "source": "Standard 2.1 – Zásada respektu, důstojnosti a autonomie.",
+    "topic": "Dobrovolnost služby",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Klient se rozhodne ukončit spolupráci se službou. Co podle metodiky platí?",
+    "answers": [
+      {
+        "id": "SAS-005-A",
+        "text": "Musí uvést závažný důvod."
+      },
+      {
+        "id": "SAS-005-B",
+        "text": "Může spolupráci kdykoli ukončit bez udání důvodu."
+      },
+      {
+        "id": "SAS-005-C",
+        "text": "Musí nejprve dokončit aktuální individuální plán."
+      }
+    ],
+    "correctAnswerId": "SAS-005-B",
+    "explanation": "Dobrovolnost a autonomie klienta zahrnuje také právo službu odmítnout nebo spolupráci ukončit.",
+    "competency": "Znalost principu dobrovolnosti.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-006",
+    "standard": "2",
+    "source": "Standard 2.3 – Prevence střetu zájmů a přijímání darů.",
+    "topic": "Dary a střet zájmů",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Klient nabídne pracovníkovi hodnotný dárkový poukaz jako poděkování za pomoc. Jak má pracovník postupovat?",
+    "answers": [
+      {
+        "id": "SAS-006-A",
+        "text": "Přijmout jej, pokud klient výslovně uvede, že za něj nic neočekává."
+      },
+      {
+        "id": "SAS-006-B",
+        "text": "Přijmout jej a zaznamenat dar do spisu, aby byl postup transparentní."
+      },
+      {
+        "id": "SAS-006-C",
+        "text": "Dar nepřijmout; případnou hraniční situaci konzultovat s vedoucím služby."
+      }
+    ],
+    "correctAnswerId": "SAS-006-C",
+    "explanation": "Metodika vyžaduje předcházet situacím, které by mohly narušit nestrannost nebo vytvořit střet osobních a profesních zájmů.",
+    "competency": "Rozpoznání profesních hranic.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-007",
+    "standard": "2",
+    "source": "Standard 2.5 – Postup při porušení práv klienta.",
+    "topic": "Porušení práv klienta",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Pracovník je svědkem toho, že kolega opakovaně komunikuje s klientem ponižujícím způsobem. Co má udělat?",
+    "answers": [
+      {
+        "id": "SAS-007-A",
+        "text": "Neprodleně informovat vedoucího služby, aby mohlo být podezření na porušení práv prošetřeno."
+      },
+      {
+        "id": "SAS-007-B",
+        "text": "Situaci řešit pouze osobním upozorněním kolegy a dál ji neevidovat."
+      },
+      {
+        "id": "SAS-007-C",
+        "text": "Vyčkat, zda si klient sám podá formální stížnost."
+      }
+    ],
+    "correctAnswerId": "SAS-007-A",
+    "explanation": "Při zjištění nebo důvodném podezření na porušení práv klienta má pracovník bezodkladně informovat vedoucího služby.",
+    "competency": "Znalost vlastní odpovědnosti při ochraně práv klientů.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-008",
+    "standard": "2",
+    "source": "Standard 2.4 – Informovaný souhlas a oznamovací povinnost.",
+    "topic": "Oznamovací povinnost",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Klient odmítá jakékoli sdílení informací s OSPOD. V průběhu spolupráce ale vznikne důvodné podezření na ohrožení řádného vývoje dítěte, situace přitom není bezprostředním ohrožením života. Jaký postup je nejlepší?",
+    "answers": [
+      {
+        "id": "SAS-008-A",
+        "text": "Nejprve se pokusit získat písemný souhlas klienta a do té doby informace nepředávat, protože situace není akutní."
+      },
+      {
+        "id": "SAS-008-B",
+        "text": "Uplatnit oznamovací povinnost vůči OSPOD, předat jen potřebné informace a důvody postupu rodině citlivě vysvětlit."
+      },
+      {
+        "id": "SAS-008-C",
+        "text": "Situaci nejprve projednat na nejbližší týmové poradě a oznámení učinit až tehdy, pokud se tým shodne, že souhlas klienta není potřeba."
+      }
+    ],
+    "correctAnswerId": "SAS-008-B",
+    "explanation": "Souhlas je běžným základem pro sdílení informací, ale metodika stanovuje výjimku při zákonné oznamovací povinnosti. Oznámení se nemá odkládat čekáním na souhlas či poradu.",
+    "competency": "Rozlišení mlčenlivosti, souhlasu a zákonné povinnosti.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-009",
+    "standard": "3",
+    "source": "Standard 3.4 – Úvodní šetření a posouzení vhodnosti.",
+    "topic": "Vstupní sociální šetření",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Co se při vstupním sociálním šetření posuzuje?",
+    "answers": [
+      {
+        "id": "SAS-009-A",
+        "text": "Především ekonomickou situaci, bydlení, zdravotní stav a počet dětí v domácnosti."
+      },
+      {
+        "id": "SAS-009-B",
+        "text": "Především ochotu rodiny plnit doporučení pracovníka, pravidelnost docházky a schopnost dodržovat termíny."
+      },
+      {
+        "id": "SAS-009-C",
+        "text": "Potřeby a očekávání rodiny, příslušnost k cílové skupině, míru rizika, kapacitu a odborné možnosti služby."
+      }
+    ],
+    "correctAnswerId": "SAS-009-C",
+    "explanation": "Vstupní šetření má umožnit objektivně posoudit situaci rodiny i vhodnost a možnosti služby.",
+    "competency": "Znalost účelu vstupního šetření.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-010",
+    "standard": "3",
+    "source": "Standard 3.2 a 3.3 – Zásady jednání a první kontakt.",
+    "topic": "Srozumitelnost informací",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Zájemce volá do služby a je zřejmé, že má problémy porozumět složitějším písemným informacím. Jak má pracovník postupovat?",
+    "answers": [
+      {
+        "id": "SAS-010-A",
+        "text": "Informace srozumitelně vysvětlit ústně, přizpůsobit jejich formu schopnostem zájemce a domluvit další postup."
+      },
+      {
+        "id": "SAS-010-B",
+        "text": "Odkázat zájemce na metodiku na webu a požádat jej, aby se ozval po jejím přečtení."
+      },
+      {
+        "id": "SAS-010-C",
+        "text": "Vyžádat nejprve písemnou žádost, aby bylo možné ověřit jeho skutečný zájem."
+      }
+    ],
+    "correctAnswerId": "SAS-010-A",
+    "explanation": "Informace mají být poskytovány ve formě a jazyce, kterým je zájemce schopen porozumět.",
+    "competency": "Přizpůsobení komunikace schopnostem zájemce.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-011",
+    "standard": "3",
+    "source": "Standard 3.5 – Rozhodnutí o přijetí či odmítnutí.",
+    "topic": "Naplněná kapacita",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Zájemce odpovídá cílové skupině, služba má ale naplněnou kapacitu. Jaký postup odpovídá Standardu 3?",
+    "answers": [
+      {
+        "id": "SAS-011-A",
+        "text": "Přijmout rodinu nad kapacitu, pokud je její situace závažná."
+      },
+      {
+        "id": "SAS-011-B",
+        "text": "Vysvětlit kapacitní důvod, nabídnout základní poradenství či vhodné návazné služby a se souhlasem zájemce jej zařadit na čekací listinu."
+      },
+      {
+        "id": "SAS-011-C",
+        "text": "Zájemce automaticky zařadit na čekací listinu a požádat jej, aby vyčkal na uvolnění kapacity bez dalšího zprostředkování."
+      }
+    ],
+    "correctAnswerId": "SAS-011-B",
+    "explanation": "Odmítnutí nemá být pouhým administrativním uzavřením kontaktu. Metodika počítá s poradenstvím, zprostředkováním další pomoci a při kapacitním důvodu s čekací listinou se souhlasem.",
+    "competency": "Správný postup při naplněné kapacitě.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-012",
+    "standard": "3",
+    "source": "Standard 3.2–3.5.",
+    "topic": "Dobrovolný vstup do služby",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Rodina přichází na doporučení OSPOD. Rodič říká, že si není jistý, zda chce službu využívat, ale je ochoten si vyslechnout informace. Jaký je nejvhodnější další postup SAS?",
+    "answers": [
+      {
+        "id": "SAS-012-A",
+        "text": "Domluvit zkušební období spolupráce a otázku souhlasu uzavřít až po několika návštěvách, protože podnět přišel od OSPOD."
+      },
+      {
+        "id": "SAS-012-B",
+        "text": "Požádat OSPOD, aby s rodičem nejprve vyřešil jeho motivaci; do té doby jednání se zájemcem nepokračovat."
+      },
+      {
+        "id": "SAS-012-C",
+        "text": "Srozumitelně vysvětlit obsah, limity a dobrovolnost služby, zjistit očekávání rodiny a ponechat rozhodnutí o zahájení spolupráce na zájemci."
+      }
+    ],
+    "correctAnswerId": "SAS-012-C",
+    "explanation": "Doporučení OSPOD neruší dobrovolnost služby. Úkolem SAS je poskytnout srozumitelné informace, zjistit situaci a očekávání a umožnit zájemci svobodně se rozhodnout.",
+    "competency": "Rozlišení doporučení instituce od dobrovolného vstupu do služby.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-013",
+    "standard": "4",
+    "source": "Standard 4.3 – Úhrada za službu.",
+    "topic": "Bezplatnost služby",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Jaká je podle metodiky úhrada za základní činnosti SAS?",
+    "answers": [
+      {
+        "id": "SAS-013-A",
+        "text": "Služba je poskytována bezplatně."
+      },
+      {
+        "id": "SAS-013-B",
+        "text": "Výše úhrady se sjednává s každou rodinou individuálně."
+      },
+      {
+        "id": "SAS-013-C",
+        "text": "Bezplatné jsou pouze terénní návštěvy."
+      }
+    ],
+    "correctAnswerId": "SAS-013-A",
+    "explanation": "Metodika uvádí nulovou úhradu za základní činnosti SAS.",
+    "competency": "Znalost základní podmínky poskytování služby.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-014",
+    "standard": "4",
+    "source": "Standard 4.2 – Doba poskytování služby.",
+    "topic": "Doba trvání smlouvy",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Jak je podle metodiky smlouva standardně nastavena z hlediska délky?",
+    "answers": [
+      {
+        "id": "SAS-014-A",
+        "text": "Vždy na dobu neurčitou bez možnosti časového omezení."
+      },
+      {
+        "id": "SAS-014-B",
+        "text": "Na dobu určitou, doporučeně 6–12 měsíců, s možností prodloužení podle potřeb rodiny a IP."
+      },
+      {
+        "id": "SAS-014-C",
+        "text": "Vždy přesně na jeden kalendářní rok bez možnosti změny."
+      }
+    ],
+    "correctAnswerId": "SAS-014-B",
+    "explanation": "Metodika doporučuje časově ohraničenou podporu, kterou je možné podle vyhodnocených potřeb prodloužit.",
+    "competency": "Základní orientaci ve smluvním nastavení služby.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-015",
+    "standard": "4",
+    "source": "Standard 4.5 – Změny a dodatky smlouvy.",
+    "topic": "Dodatek ke smlouvě",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "V průběhu spolupráce se rodina s pracovníkem dohodne na významné změně rozsahu a frekvence poskytované služby. Jak se má změna provést?",
+    "answers": [
+      {
+        "id": "SAS-015-A",
+        "text": "Stačí ústní dohoda, pokud ji pracovník uvede do záznamu z návštěvy."
+      },
+      {
+        "id": "SAS-015-B",
+        "text": "Stačí novou frekvenci uvést při nejbližším vyhodnocení individuálního plánu."
+      },
+      {
+        "id": "SAS-015-C",
+        "text": "Změna se provede písemným dodatkem ke smlouvě, který je datován a podepsán oběma stranami."
+      }
+    ],
+    "correctAnswerId": "SAS-015-C",
+    "explanation": "Metodika stanovuje pro změny obsahu, rozsahu, frekvence nebo doby platnosti smlouvy písemný dodatek.",
+    "competency": "Rozlišení běžné dohody v IP od změny smluvních podmínek.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-016",
+    "standard": "4",
+    "source": "Standard 4.6 – Ukončení smlouvy.",
+    "topic": "Ukončení smlouvy klientem",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Klient při terénní návštěvě řekne: „Už službu nechci a dneškem končím.“ V individuálním plánu přitom zůstávají nesplněné cíle a na příští týden je domluvené jednání s další službou. Jaký postup je nejlepší?",
+    "answers": [
+      {
+        "id": "SAS-016-A",
+        "text": "Respektovat ukončení i bez udání důvodu, s klientem stručně vyjasnit bezprostřední návaznosti a provést potřebné závěrečné a administrativní kroky."
+      },
+      {
+        "id": "SAS-016-B",
+        "text": "Doporučit klientovi, aby spolupráci ukončil až po nejbližším vyhodnocení IP, protože nesplněné cíle je vhodné nejprve formálně uzavřít."
+      },
+      {
+        "id": "SAS-016-C",
+        "text": "Považovat sdělení pouze za záměr ukončit službu a vyžádat si písemnou výpověď, než se zruší naplánované návazné kroky."
+      }
+    ],
+    "correctAnswerId": "SAS-016-A",
+    "explanation": "Klient může službu kdykoli ukončit bez udání důvodu, podle metodiky i ústně. Nesplněné cíle nejsou důvodem pokračování proti jeho vůli; služba však má spolupráci řádně uzavřít a podle potřeby řešit návaznost.",
+    "competency": "Praktické použití principu dobrovolnosti ve smluvním vztahu.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-017",
+    "standard": "5",
+    "source": "Standard 5.4 – Zapojení rodiny do plánování.",
+    "topic": "Termín prvního IP",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Do kdy má být podle metodiky sestaven a odsouhlasen první individuální plán?",
+    "answers": [
+      {
+        "id": "SAS-017-A",
+        "text": "Do tří měsíců od prvního kontaktu."
+      },
+      {
+        "id": "SAS-017-B",
+        "text": "Nejpozději do jednoho měsíce od zahájení poskytování služby."
+      },
+      {
+        "id": "SAS-017-C",
+        "text": "Až při prvním pravidelném vyhodnocení spolupráce."
+      }
+    ],
+    "correctAnswerId": "SAS-017-B",
+    "explanation": "První IP má být dokončen nejpozději do jednoho měsíce, s výjimkou akutní krizové situace popsané metodikou.",
+    "competency": "Znalost základního časového rámce IP.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-018",
+    "standard": "5",
+    "source": "Standard 5.2 a 5.3 – SMART cíle a struktura IP.",
+    "topic": "SMART cíle",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Který z následujících cílů nejlépe odpovídá způsobu plánování požadovanému metodikou?",
+    "answers": [
+      {
+        "id": "SAS-018-A",
+        "text": "„Během tří měsíců se rodina bude snažit lépe hospodařit a omezovat vznik dalších dluhů.“"
+      },
+      {
+        "id": "SAS-018-B",
+        "text": "„Do tří měsíců pracovník nastaví rodině rozpočet a zajistí, aby jej rodiče dodržovali.“"
+      },
+      {
+        "id": "SAS-018-C",
+        "text": "„Rodiče budou po dobu tří měsíců hospodařit podle dohodnutého rozpočtu bez vzniku nových splatných pohledávek.“"
+      }
+    ],
+    "correctAnswerId": "SAS-018-C",
+    "explanation": "Třetí varianta je konkrétní a obsahuje měřitelný stav i časový rámec; současně ponechává aktivitu na rodině.",
+    "competency": "Schopnost rozpoznat kvalitně formulovaný cíl.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-019",
+    "standard": "5",
+    "source": "Standard 5.5 – Realizace a vyhodnocování plánu.",
+    "topic": "Mimořádné vyhodnocení IP",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Individuální plán byl formálně vyhodnocen před šesti týdny, ale situace rodiny se nyní zásadně změnila. Co má klíčový pracovník udělat?",
+    "answers": [
+      {
+        "id": "SAS-019-A",
+        "text": "Vyhodnotit IP mimo pravidelný termín a podle nové situace jej aktualizovat."
+      },
+      {
+        "id": "SAS-019-B",
+        "text": "Vyčkat do uplynutí tří měsíců, aby byla zachována pravidelná periodicita."
+      },
+      {
+        "id": "SAS-019-C",
+        "text": "Původní IP administrativně uzavřít a bez dalšího ukončit službu."
+      }
+    ],
+    "correctAnswerId": "SAS-019-A",
+    "explanation": "Tři měsíce jsou nejzazší pravidelnou periodou; zásadní změna situace je samostatným důvodem pro dřívější vyhodnocení.",
+    "competency": "Porozumění rozdílu mezi pravidelným a mimořádným vyhodnocením.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-020",
+    "standard": "5",
+    "source": "Standard 5.4 – Časový rámec individuálního plánování.",
+    "topic": "Krize před dokončením IP",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Krátce po podpisu smlouvy vznikne v rodině akutní krizová situace. Individuální plán ještě není dokončen a rodina se nyní nedokáže soustředit na podrobné plánování. Co je nejlepší postup?",
+    "answers": [
+      {
+        "id": "SAS-020-A",
+        "text": "Sepsat pracovní verzi IP bez rodiny podle zjištění pracovníka, aby byla administrativa dokončena před poskytnutím další pomoci."
+      },
+      {
+        "id": "SAS-020-B",
+        "text": "Prioritně řešit akutní potřebu a bezpečí, průběh zaznamenat a detailní IP dokončit s rodinou neprodleně po stabilizaci situace."
+      },
+      {
+        "id": "SAS-020-C",
+        "text": "Poskytovat pouze krizovou pomoc a od individuálního plánování upustit, protože krizová situace mění charakter služby."
+      }
+    ],
+    "correctAnswerId": "SAS-020-B",
+    "explanation": "Metodika dává v akutní krizi přednost okamžité pomoci a bezpečí. Individuální plán tím ale nezaniká; má být dokončen s rodinou po stabilizaci situace.",
+    "competency": "Schopnost správně určit prioritu v mimořádné situaci.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-021",
+    "standard": "6",
+    "source": "Standard 6 – procesní tabulka „Průběžné vedení záznamů“.",
+    "topic": "Lhůta zápisu kontaktu",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Do kdy má být podle procesního pravidla zaznamenána návštěva, konzultace nebo jiný kontakt s rodinou?",
+    "answers": [
+      {
+        "id": "SAS-021-A",
+        "text": "Do konce kalendářního týdne."
+      },
+      {
+        "id": "SAS-021-B",
+        "text": "Do nejbližší týmové porady."
+      },
+      {
+        "id": "SAS-021-C",
+        "text": "Do dvou pracovních dnů."
+      }
+    ],
+    "correctAnswerId": "SAS-021-C",
+    "explanation": "Procesní tabulka Standardu 6 stanovuje maximálně dva pracovní dny.",
+    "competency": "Znalost praktické dokumentační povinnosti.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-022",
+    "standard": "6",
+    "source": "Standard 6.4 – Objektivita a věcnost záznamů.",
+    "topic": "Objektivita záznamu",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Která formulace nejlépe odpovídá pravidlům pro objektivní záznam?",
+    "answers": [
+      {
+        "id": "SAS-022-A",
+        "text": "„Při návštěvě byly na stole tři neotevřené obálky; klient uvedl, že je zatím neprošel.“"
+      },
+      {
+        "id": "SAS-022-B",
+        "text": "„Klient při návštěvě působil, že poštu dlouhodobě nezvládá a pravděpodobně ji ignoruje.“"
+      },
+      {
+        "id": "SAS-022-C",
+        "text": "„Na stole byly tři neotevřené obálky, což podle pracovníka potvrzuje nízkou motivaci rodiny řešit finance.“"
+      }
+    ],
+    "correctAnswerId": "SAS-022-A",
+    "explanation": "První zápis popisuje pozorovatelnou skutečnost a odděluje ji od sdělení klienta. Ostatní varianty prezentují interpretaci jako fakt.",
+    "competency": "Rozlišení faktu od hodnocení pracovníka.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-023",
+    "standard": "6",
+    "source": "Standard 6.4 – Opravy v písemné dokumentaci.",
+    "topic": "Opravy v dokumentaci",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Pracovník zjistí chybu v již napsaném papírovém záznamu. Jak má opravu provést?",
+    "answers": [
+      {
+        "id": "SAS-023-A",
+        "text": "Chybný text začernit tak, aby jej už nebylo možné přečíst."
+      },
+      {
+        "id": "SAS-023-B",
+        "text": "Původní text ponechat čitelný, jednoduše jej přeškrtnout a opravu opatřit datem a podpisem."
+      },
+      {
+        "id": "SAS-023-C",
+        "text": "Původní zápis ponechat beze změny a správnou informaci uvést pouze v příštím záznamu."
+      }
+    ],
+    "correctAnswerId": "SAS-023-B",
+    "explanation": "Metodika vyžaduje zachování dohledatelnosti původního záznamu a integrity dokumentace.",
+    "competency": "Správnou techniku opravy dokumentace.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-024",
+    "standard": "6",
+    "source": "Standard 6.5 – Přístup k dokumentaci.",
+    "topic": "Přístup ke spisu a ochrana třetích osob",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Klient požádá o nahlédnutí do spisu a o kopie dokumentů. Některé z nich obsahují citlivé údaje o další osobě, která není jeho zákonným zástupcem. Jaký postup je nejlepší?",
+    "answers": [
+      {
+        "id": "SAS-024-A",
+        "text": "Umožnit kopii celého spisu, pokud klient potvrdí, že údaje jiné osoby nebude dále šířit."
+      },
+      {
+        "id": "SAS-024-B",
+        "text": "Umožnit klientovi pouze nahlédnutí bez pořizování kopií, protože přítomnost údajů jiné osoby vylučuje právo na kopie."
+      },
+      {
+        "id": "SAS-024-C",
+        "text": "Umožnit přístup a kopie v rozsahu týkajícím se klienta a současně vhodným způsobem chránit citlivé údaje dalších osob."
+      }
+    ],
+    "correctAnswerId": "SAS-024-C",
+    "explanation": "Právo klienta na přístup a kopie se uplatňuje současně s ochranou osobních údajů dalších osob. Ani úplné zpřístupnění, ani plošné odmítnutí nejsou správné.",
+    "competency": "Vyvažování transparentnosti dokumentace a ochrany třetích osob.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-025",
+    "standard": "7",
+    "source": "Standard 7.2–7.4.",
+    "topic": "Anonymní stížnost",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Může být stížnost na službu podána anonymně?",
+    "answers": [
+      {
+        "id": "SAS-025-A",
+        "text": "Ano, anonymní stížnost se eviduje a vyhodnocuje stejně jako ostatní."
+      },
+      {
+        "id": "SAS-025-B",
+        "text": "Ano, ale pouze pokud ji potvrdí další klient služby."
+      },
+      {
+        "id": "SAS-025-C",
+        "text": "Ne, bez identifikace stěžovatele se stížnost neprošetřuje."
+      }
+    ],
+    "correctAnswerId": "SAS-025-A",
+    "explanation": "Metodika výslovně připouští anonymní stížnosti.",
+    "competency": "Znalost práva klienta na bezpečné podání stížnosti.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-026",
+    "standard": "7",
+    "source": "Standard 7.3 a 7.4.",
+    "topic": "Přijetí stížnosti",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Klient při terénní návštěvě řekne pracovníkovi, že chce podat stížnost na způsob poskytování služby. Co má pracovník udělat?",
+    "answers": [
+      {
+        "id": "SAS-026-A",
+        "text": "Odkázat jej na vedoucího, protože běžný pracovník stížnost přijmout nesmí."
+      },
+      {
+        "id": "SAS-026-B",
+        "text": "Stížnost přijmout, ústní podání zaznamenat a bez zbytečného odkladu ji postoupit vedoucímu."
+      },
+      {
+        "id": "SAS-026-C",
+        "text": "Požádat klienta, aby ji nejprve přeformuloval jako písemné podání."
+      }
+    ],
+    "correctAnswerId": "SAS-026-B",
+    "explanation": "Kterýkoli pracovník má stížnost převzít; ústní stížnost se zaznamenává.",
+    "competency": "Praktický postup při přijetí stížnosti.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-027",
+    "standard": "7",
+    "source": "Standard 7.4 – Postoupení a určení kompetentní osoby.",
+    "topic": "Stížnost na vedoucího",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Klient předá pracovníkovi stížnost, která směřuje přímo na vedoucího služby. Kam ji má pracovník podle metodiky postoupit?",
+    "answers": [
+      {
+        "id": "SAS-027-A",
+        "text": "Klíčovému pracovníkovi klienta, aby nejprve ověřil souvislosti případu."
+      },
+      {
+        "id": "SAS-027-B",
+        "text": "Vedoucímu služby, který ji společně s klientem prošetří."
+      },
+      {
+        "id": "SAS-027-C",
+        "text": "Statutárnímu zástupci Emcéčka nebo jím pověřené nestranné osobě."
+      }
+    ],
+    "correctAnswerId": "SAS-027-C",
+    "explanation": "Stížnost na vedoucího nemá vyřizovat osoba, proti které směřuje.",
+    "competency": "Zajištění nestrannosti při vyřizování stížností.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-028",
+    "standard": "7",
+    "source": "Standard 7.4 – Vyřízení stížnosti a lhůty.",
+    "topic": "Prodloužení lhůty stížnosti",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Prošetření složité stížnosti se blíží třicátému dni. Chybí ještě jeden důležitý podklad a bez něj by závěr nebyl dostatečně objektivní. Jak má vedoucí postupovat?",
+    "answers": [
+      {
+        "id": "SAS-028-A",
+        "text": "Písemně informovat klienta o důvodu prodloužení, uvést nový termín a pokračovat v řádném prošetření."
+      },
+      {
+        "id": "SAS-028-B",
+        "text": "Do třiceti dnů vydat předběžný závěr jako konečné vyřízení a po získání podkladu případně otevřít novou stížnost."
+      },
+      {
+        "id": "SAS-028-C",
+        "text": "Uzavřít stížnost podle dosavadních podkladů a chybějící informaci zohlednit jen tehdy, pokud klient podá odvolání."
+      }
+    ],
+    "correctAnswerId": "SAS-028-A",
+    "explanation": "Metodika umožňuje u zvlášť složitého případu prodloužení lhůty, ale vyžaduje klienta písemně informovat o důvodu a novém termínu. Kvalita šetření nemá být obětována formálnímu dodržení lhůty.",
+    "competency": "Správnou reakci na střet požadavku na včasnost a řádné prošetření.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-029",
+    "standard": "8",
+    "source": "Standard 8.1 a 8.4.",
+    "topic": "Role SAS v síti",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Jakou základní roli má SAS při práci s dalšími službami a institucemi?",
+    "answers": [
+      {
+        "id": "SAS-029-A",
+        "text": "Postupně převzít činnosti institucí, které rodina nezvládá využívat."
+      },
+      {
+        "id": "SAS-029-B",
+        "text": "Být průvodcem a prostředníkem, který rodině pomáhá další zdroje využívat samostatně."
+      },
+      {
+        "id": "SAS-029-C",
+        "text": "Omezovat počet dalších služeb, aby rodina měla jediný kontaktní bod v SAS."
+      }
+    ],
+    "correctAnswerId": "SAS-029-B",
+    "explanation": "SAS jiné služby nesupluje; podporuje rodinu v orientaci a využívání běžných zdrojů.",
+    "competency": "Pochopení role SAS v síti služeb.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-030",
+    "standard": "8",
+    "source": "Standard 8.2 a 8.5.",
+    "topic": "Sdílení informací se školou",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Škola telefonicky požádá pracovníka SAS o informace o rodinné situaci dítěte. Rodina nedala souhlas ke sdílení a nejde o situaci zákonné oznamovací povinnosti. Jak má pracovník postupovat?",
+    "answers": [
+      {
+        "id": "SAS-030-A",
+        "text": "Poskytnout potřebné informace, protože škola patří mezi běžné partnery SAS."
+      },
+      {
+        "id": "SAS-030-B",
+        "text": "Poslat škole celý aktuální souhrn situace, pokud je účelem pomoc dítěti."
+      },
+      {
+        "id": "SAS-030-C",
+        "text": "Informace nepředat bez příslušného souhlasu a nejprve vyřešit účel a rozsah případného sdílení s rodinou."
+      }
+    ],
+    "correctAnswerId": "SAS-030-C",
+    "explanation": "Spolupráce se školou sama o sobě není oprávněním předávat osobní informace bez souhlasu.",
+    "competency": "Použití pravidel mlčenlivosti v mezioborové spolupráci.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-031",
+    "standard": "8",
+    "source": "Standard 8.7 – Prevence zdvojování činností.",
+    "topic": "Psychoterapie a návazná péče",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Pracovník zjistí, že klient potřebuje psychoterapeutickou péči. Jaká reakce odpovídá metodice?",
+    "answers": [
+      {
+        "id": "SAS-031-A",
+        "text": "Pomoci klientovi vhodnou odbornou službu najít, motivovat jej a případně zprostředkovat první kontakt."
+      },
+      {
+        "id": "SAS-031-B",
+        "text": "Začít s klientem poskytovat psychoterapii v rámci běžných návštěv SAS."
+      },
+      {
+        "id": "SAS-031-C",
+        "text": "Téma uzavřít s tím, že psychické obtíže vůbec nepatří do práce SAS."
+      }
+    ],
+    "correctAnswerId": "SAS-031-A",
+    "explanation": "SAS psychoterapii nenahrazuje, ale může klienta podporovat v jejím využití.",
+    "competency": "Rozlišení vlastní kompetence od zprostředkování odborné péče.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-032",
+    "standard": "8",
+    "source": "Standard 8.2, 8.5 a 8.7.",
+    "topic": "Koordinace více služeb",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "S rodinou pracuje škola, OSPOD, dluhová poradna a další sociální služba. Rodina uvádí, že dostává od různých pracovníků podobné úkoly a neví, kdo co řeší. Jaký postup je nejlepší?",
+    "answers": [
+      {
+        "id": "SAS-032-A",
+        "text": "Požádat OSPOD, aby převzal koordinaci všech oblastí, a ostatní služby se následně řídily jeho rozdělením úkolů."
+      },
+      {
+        "id": "SAS-032-B",
+        "text": "S rodinou a zapojenými partnery vyjasnit role a cíle, koordinovat postup, omezit duplicity a sdílet informace jen v oprávněném rozsahu."
+      },
+      {
+        "id": "SAS-032-C",
+        "text": "Ponechat každou instituci pracovat zcela odděleně, aby se minimalizovalo riziko porušení mlčenlivosti, i když se činnosti překrývají."
+      }
+    ],
+    "correctAnswerId": "SAS-032-B",
+    "explanation": "Metodika požaduje koordinaci a nezdvojování činností, ale zároveň ochranu osobních údajů a respekt k roli rodiny. Úplná izolace ani automatické podřízení všech partnerů jedné instituci principům služby neodpovídá.",
+    "competency": "Koordinaci více služeb bez převzetí jejich rolí.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-033",
+    "standard": "9",
+    "source": "Standard 9.2 a 9.4.",
+    "topic": "Role pracovníka v sociálních službách",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Které činnosti podle metodiky typicky náleží pracovníkovi v sociálních službách?",
+    "answers": [
+      {
+        "id": "SAS-033-A",
+        "text": "Samostatné metodické řízení služby a rozhodování o přijetí zájemců."
+      },
+      {
+        "id": "SAS-033-B",
+        "text": "Odborné vedení sociálních šetření a konečné rozhodování o cílech všech IP."
+      },
+      {
+        "id": "SAS-033-C",
+        "text": "Terénní asistence, doprovody, výchovné činnosti a nácvik praktických dovedností."
+      }
+    ],
+    "correctAnswerId": "SAS-033-C",
+    "explanation": "Metodika odlišuje kompetence pracovníka v sociálních službách od role sociálního pracovníka a vedoucího.",
+    "competency": "Orientaci v základním rozdělení rolí.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-034",
+    "standard": "9",
+    "source": "Standard 9.2 a 9.4.",
+    "topic": "Kompetence a týmové plánování",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Pracovník v sociálních službách při pravidelných návštěvách získává důležité poznatky o fungování rodiny. Jak je nejvhodnější využít při individuálním plánování?",
+    "answers": [
+      {
+        "id": "SAS-034-A",
+        "text": "Předat je v rámci týmu; odborné plánování vede sociální či klíčový pracovník a pracovník v sociálních službách realizuje úkoly v rámci své role."
+      },
+      {
+        "id": "SAS-034-B",
+        "text": "Nechat pracovníka v sociálních službách samostatně změnit cíle IP, protože rodinu vídá nejčastěji."
+      },
+      {
+        "id": "SAS-034-C",
+        "text": "Poznatky do plánování nezařazovat, protože IP se týká pouze práce sociálního pracovníka."
+      }
+    ],
+    "correctAnswerId": "SAS-034-A",
+    "explanation": "Týmová práce využívá poznatky všech zapojených pracovníků, ale jejich kompetence nejsou zaměnitelné.",
+    "competency": "Spolupráci profesí při zachování kompetenčních hranic.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-035",
+    "standard": "9",
+    "source": "Standard 9.3 – Zastupitelnost.",
+    "topic": "Zastupitelnost",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Klíčový pracovník náhle dlouhodobě vypadne z práce. Jak má služba postupovat?",
+    "answers": [
+      {
+        "id": "SAS-035-A",
+        "text": "Pozastavit spolupráci se všemi jeho rodinami do jeho návratu."
+      },
+      {
+        "id": "SAS-035-B",
+        "text": "Zajistit přiměřené zastoupení jiným členem týmu a rodiny informovat o dočasné změně."
+      },
+      {
+        "id": "SAS-035-C",
+        "text": "Automaticky převést všechny rodiny k jiné organizaci."
+      }
+    ],
+    "correctAnswerId": "SAS-035-B",
+    "explanation": "Organizační nastavení má zajistit kontinuitu služby i při absenci pracovníka.",
+    "competency": "Praktické uplatnění principu kontinuity služby.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-036",
+    "standard": "9",
+    "source": "Standard 9.2 a 9.4 – Externí odborníci.",
+    "topic": "Externí odborník",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Rodina potřebuje psychologickou konzultaci, která přesahuje odbornost týmu SAS. Potřeba ale souvisí s cíli individuálního plánu a ostatní podpora rodiny pokračuje. Jaký postup je nejlepší?",
+    "answers": [
+      {
+        "id": "SAS-036-A",
+        "text": "Sociální pracovník dočasně převezme psychologickou práci v rozsahu, který považuje za zvládnutelný, aby se nezdržoval postup IP."
+      },
+      {
+        "id": "SAS-036-B",
+        "text": "Předat rodinu psychologovi jako celek a práci SAS pozastavit, dokud odborník svou část neukončí."
+      },
+      {
+        "id": "SAS-036-C",
+        "text": "Zapojit vhodného externího odborníka pro specifickou potřebu a současně zachovat koordinaci ostatní podpory v rámci kompetencí SAS."
+      }
+    ],
+    "correctAnswerId": "SAS-036-C",
+    "explanation": "Externí odborník doplňuje kompetence týmu v konkrétní oblasti. SAS nemá překračovat svou odbornost ani automaticky ukončovat či přerušovat podporu, která nadále spadá do její role.",
+    "competency": "Práci na hranici odborných kompetencí.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-037",
+    "standard": "10",
+    "source": "Standard 10.2 – Systém hodnocení pracovníků.",
+    "topic": "Hodnocení pracovníka",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Jak často podle metodiky probíhá hodnoticí pohovor pracovníka s vedoucím služby?",
+    "answers": [
+      {
+        "id": "SAS-037-A",
+        "text": "Jednou ročně."
+      },
+      {
+        "id": "SAS-037-B",
+        "text": "Jednou za tři roky."
+      },
+      {
+        "id": "SAS-037-C",
+        "text": "Pouze tehdy, když vznikne problém ve výkonu práce."
+      }
+    ],
+    "correctAnswerId": "SAS-037-A",
+    "explanation": "Hodnoticí pohovor je pravidelnou součástí profesního rozvoje a plánování dalšího vzdělávání.",
+    "competency": "Znalost systému pracovního hodnocení.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-038",
+    "standard": "10",
+    "source": "Standard 10.3 – Další vzdělávání.",
+    "topic": "Vzdělávací plán",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Vedoucí připravuje roční vzdělávací plán pracovníka. Která kombinace podkladů nejlépe odpovídá metodice?",
+    "answers": [
+      {
+        "id": "SAS-038-A",
+        "text": "Dostupná nabídka kurzů, finanční možnosti organizace a preference lektora."
+      },
+      {
+        "id": "SAS-038-B",
+        "text": "Zákonné požadavky, potřeby služby a individuální profesní cíle pracovníka."
+      },
+      {
+        "id": "SAS-038-C",
+        "text": "Přání pracovníka, doporučení kolegů a témata, která se objevila na poslední poradě."
+      }
+    ],
+    "correctAnswerId": "SAS-038-B",
+    "explanation": "Vzdělávání má spojovat profesní povinnost, skutečné potřeby služby a individuální rozvoj pracovníka.",
+    "competency": "Smysluplné plánování profesního rozvoje.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-039",
+    "standard": "10",
+    "source": "Standard 10.4 – Zaškolování nových pracovníků.",
+    "topic": "Adaptace nového pracovníka",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Do týmu nastoupí nový pracovník. Který adaptační postup nejlépe odpovídá metodice?",
+    "answers": [
+      {
+        "id": "SAS-039-A",
+        "text": "Po seznámení s pracovní smlouvou začne pracovat samostatně a metodiku si prostuduje během roku."
+      },
+      {
+        "id": "SAS-039-B",
+        "text": "První tři měsíce pouze pozoruje ostatní a nesmí vykonávat žádnou přímou práci."
+      },
+      {
+        "id": "SAS-039-C",
+        "text": "Absolvuje vstupní školení, seznámí se s metodikou a standardy, má mentora během přibližně tříměsíční adaptace a poté hodnoticí rozhovor."
+      }
+    ],
+    "correctAnswerId": "SAS-039-C",
+    "explanation": "Metodika popisuje strukturované uvedení pracovníka do praxe s mentoringem a závěrečným vyhodnocením adaptačního období.",
+    "competency": "Znalost adaptačního procesu.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-040",
+    "standard": "10",
+    "source": "Standard 10.5 – Individuální supervize a intervize.",
+    "topic": "Individuální supervize",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Pracovníka výrazně psychicky zasáhne náročný případ. Má obavu, že zátěž začíná ovlivňovat jeho soustředění, ale zároveň chce zachovat kontinuitu podpory rodiny. Jaký postup nejlépe odpovídá metodice?",
+    "answers": [
+      {
+        "id": "SAS-040-A",
+        "text": "Požádat o individuální supervizi nebo konzultaci a podle potřeby s vedoucím probrat další podporu tak, aby byla zachována bezpečná a odborná práce."
+      },
+      {
+        "id": "SAS-040-B",
+        "text": "Pokračovat beze změny do nejbližší skupinové supervize, protože průběžná individuální podpora by mohla narušit kontinuitu případu."
+      },
+      {
+        "id": "SAS-040-C",
+        "text": "Případ bez další konzultace předat kolegovi a k rodině se dočasně nevracet, aby pracovník nemusel své zatížení v týmu otevírat."
+      }
+    ],
+    "correctAnswerId": "SAS-040-A",
+    "explanation": "Metodika umožňuje individuální supervizi či konzultaci zejména při akutní psychické zátěži nebo mimořádně složitém případu. Smyslem je chránit pracovníka i kvalitu a kontinuitu služby.",
+    "competency": "Schopnost včas využít systém odborné podpory.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-041",
+    "standard": "11",
+    "source": "Standard 11.2 – Místní dostupnost služby.",
+    "topic": "Místní působnost",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Na jakou oblast je služba podle metodiky primárně místně zaměřena?",
+    "answers": [
+      {
+        "id": "SAS-041-A",
+        "text": "Na celý Zlínský kraj bez dalšího územního vymezení."
+      },
+      {
+        "id": "SAS-041-B",
+        "text": "Na ORP Valašské Meziříčí a spádové okolí."
+      },
+      {
+        "id": "SAS-041-C",
+        "text": "Pouze na klienty s trvalým pobytem přímo ve Valašském Meziříčí."
+      }
+    ],
+    "correctAnswerId": "SAS-041-B",
+    "explanation": "Metodika pracuje s ORP Valašské Meziříčí a jeho spádovým okolím, nikoli pouze se samotným městem.",
+    "competency": "Základní znalost místní působnosti.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-042",
+    "standard": "11",
+    "source": "Standard 11.2 a zásada terénního charakteru služby ve Standardu 1.4.",
+    "topic": "Terénní forma služby",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Která forma poskytování má podle metodiky v SAS převažovat?",
+    "answers": [
+      {
+        "id": "SAS-042-A",
+        "text": "Výhradně ambulantní práce v centru."
+      },
+      {
+        "id": "SAS-042-B",
+        "text": "Pobytová forma pro celé rodiny."
+      },
+      {
+        "id": "SAS-042-C",
+        "text": "Terénní práce v přirozeném prostředí rodiny."
+      }
+    ],
+    "correctAnswerId": "SAS-042-C",
+    "explanation": "Služba je koncipována především jako terénní, i když využívá také ambulantní formu.",
+    "competency": "Znalost základní formy služby.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-043",
+    "standard": "11",
+    "source": "Standard 11.3 a 11.5.",
+    "topic": "Časová flexibilita",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Pracující rodič se kvůli zaměstnání opakovaně nemůže účastnit návštěv v běžném odpoledním čase. Co nejlépe odpovídá metodice?",
+    "answers": [
+      {
+        "id": "SAS-043-A",
+        "text": "Podle možností služby hledat flexibilní termín, včetně pozdější návštěvy po předchozí dohodě."
+      },
+      {
+        "id": "SAS-043-B",
+        "text": "Trvat na stejném čase pro všechny klienty, aby byl zachován rovný přístup."
+      },
+      {
+        "id": "SAS-043-C",
+        "text": "Převést rodinu automaticky pouze na telefonické konzultace."
+      }
+    ],
+    "correctAnswerId": "SAS-043-A",
+    "explanation": "Dostupnost služby má reagovat na reálné možnosti rodin a metodika počítá s pružností pracovní doby.",
+    "competency": "Rozlišení rovného přístupu od mechanicky stejného zacházení.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-044",
+    "standard": "11",
+    "source": "Standard 11.6; obsahově také Standard 3.5.",
+    "topic": "Kapacitní dostupnost",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Služba má naplněnou kapacitu. Obrátí se na ni rodina, která jednoznačně patří do cílové skupiny a potřebuje podporu, ale popsaná situace není akutním ohrožením. Jaký postup je nejlepší?",
+    "answers": [
+      {
+        "id": "SAS-044-A",
+        "text": "Rodinu dočasně přijmout nad registrovanou kapacitu a administrativně ji zařadit až po uvolnění místa."
+      },
+      {
+        "id": "SAS-044-B",
+        "text": "Transparentně vysvětlit kapacitní situaci, nabídnout základní poradenství či vhodný návazný zdroj a další postup řešit podle pravidel evidence zájemců a kapacity."
+      },
+      {
+        "id": "SAS-044-C",
+        "text": "Rodinu pouze zapsat na čekací seznam bez dalšího poradenství, protože aktivnější podpora by znamenala překročení kapacity."
+      }
+    ],
+    "correctAnswerId": "SAS-044-B",
+    "explanation": "Naplněná kapacita se nemá obcházet, ale ani vést k pouhému odmítnutí bez orientace. Metodika počítá s informováním, základním poradenstvím či zprostředkováním jiné vhodné pomoci.",
+    "competency": "Profesní postup při omezené kapacitě.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-045",
+    "standard": "12",
+    "source": "Standard 12.1–12.3.",
+    "topic": "Kvalita informací",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Jaké mají být informace poskytované veřejnosti, zájemcům a uživatelům?",
+    "answers": [
+      {
+        "id": "SAS-045-A",
+        "text": "Především právně přesné, i kdyby byly pro část klientů obtížně srozumitelné."
+      },
+      {
+        "id": "SAS-045-B",
+        "text": "Co nejstručnější, aby pracovníci klienty nezatěžovali podrobnostmi."
+      },
+      {
+        "id": "SAS-045-C",
+        "text": "Úplné, aktuální a podané srozumitelnou formou."
+      }
+    ],
+    "correctAnswerId": "SAS-045-C",
+    "explanation": "Informovanost není splněna pouhou dostupností informace; klient jí musí být schopen rozumět.",
+    "competency": "Základní princip informovanosti.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-046",
+    "standard": "12",
+    "source": "Standard 12.3 – Srozumitelnost a jazyková dostupnost.",
+    "topic": "Nízká gramotnost a jazyková bariéra",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Klient má nízkou gramotnost a zároveň omezeně rozumí češtině. Jak má pracovník předávat důležité informace?",
+    "answers": [
+      {
+        "id": "SAS-046-A",
+        "text": "Použít jednoduchý jazyk, ústní a názorné vysvětlení a podle potřeby překlad či tlumočení a ověřit porozumění."
+      },
+      {
+        "id": "SAS-046-B",
+        "text": "Předat standardní písemný materiál, protože použití stejného dokumentu zajišťuje rovnost klientů."
+      },
+      {
+        "id": "SAS-046-C",
+        "text": "Veškerou komunikaci automaticky vést přes příbuzného klienta."
+      }
+    ],
+    "correctAnswerId": "SAS-046-A",
+    "explanation": "Forma komunikace má být přizpůsobena schopnostem klienta; metodika počítá s názorností i jazykovou podporou.",
+    "competency": "Praktickou dostupnost informací.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-047",
+    "standard": "12",
+    "source": "Standard 12.6 a 12.7.",
+    "topic": "Informování o změnách",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Kvůli nepřítomnosti pracovníka se musí změnit již dohodnuté termíny několika klientů. Jak má služba postupovat?",
+    "answers": [
+      {
+        "id": "SAS-047-A",
+        "text": "Počkat na další osobní kontakt a změnu vysvětlit až tehdy."
+      },
+      {
+        "id": "SAS-047-B",
+        "text": "Klienty o změně včas informovat vhodným komunikačním kanálem a podle možností domluvit další postup."
+      },
+      {
+        "id": "SAS-047-C",
+        "text": "Změnit pouze informaci na webu, protože tím je splněna informační povinnost."
+      }
+    ],
+    "correctAnswerId": "SAS-047-B",
+    "explanation": "Informace o změnách, které mají dopad na konkrétního klienta, mají být aktivně a srozumitelně předávány.",
+    "competency": "Aktivní informování uživatelů o změně služby.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-048",
+    "standard": "12",
+    "source": "Standard 12.6 – Informovanost uživatelů v průběhu služby.",
+    "topic": "Zavedení nového pravidla",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Organizace zavede nové vnitřní pravidlo, které mění část práv a povinností stávajících klientů. Někteří klienti mají nízkou gramotnost. Jaký postup je nejvhodnější?",
+    "answers": [
+      {
+        "id": "SAS-048-A",
+        "text": "Zveřejnit úplné znění na webu a při nejbližší návštěvě si nechat podepsat potvrzení o seznámení."
+      },
+      {
+        "id": "SAS-048-B",
+        "text": "Rozeslat klientům písemnou informaci a další vysvětlení poskytovat pouze těm, kteří se sami zeptají."
+      },
+      {
+        "id": "SAS-048-C",
+        "text": "Klienty aktivně informovat srozumitelnou formou, vysvětlit praktický dopad změny a podle potřeby ověřit, že jí porozuměli."
+      }
+    ],
+    "correctAnswerId": "SAS-048-C",
+    "explanation": "Metodika klade důraz na průběžné, aktivní a srozumitelné informování uživatelů. Samotné zveřejnění, doručení textu nebo podpis bez porozumění nestačí.",
+    "competency": "Rozlišení formálního informování od skutečného porozumění.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-049",
+    "standard": "13",
+    "source": "Standard 13.2 – Terénní forma služby.",
+    "topic": "Domluvená terénní návštěva",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Jak mají podle metodiky běžně probíhat návštěvy v domácnosti rodiny?",
+    "answers": [
+      {
+        "id": "SAS-049-A",
+        "text": "Návštěva je předem domluvena a pracovník respektuje soukromí domácnosti."
+      },
+      {
+        "id": "SAS-049-B",
+        "text": "Pracovník může přijít bez oznámení, pokud potřebuje ověřit skutečné podmínky dítěte."
+      },
+      {
+        "id": "SAS-049-C",
+        "text": "První návštěva je domluvená, další může pracovník provádět bez předchozí dohody."
+      }
+    ],
+    "correctAnswerId": "SAS-049-A",
+    "explanation": "Metodika zdůrazňuje, že pracovník je v domácnosti hostem a návštěva má být předem dohodnuta.",
+    "competency": "Respekt k soukromí při terénní práci.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-050",
+    "standard": "13",
+    "source": "Standard 13.2; související krizový postup Standardu 14.3.",
+    "topic": "Bezpečnost při návštěvě",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Při příchodu na dohodnutou návštěvu pracovník zjistí, že se v domácnosti volně pohybuje agresivní pes a klient jej odmítá zajistit. Co je nejvhodnější?",
+    "answers": [
+      {
+        "id": "SAS-050-A",
+        "text": "Vstoupit, pokud klient ujistí pracovníka, že psa zná a dokáže jej během návštěvy slovně usměrnit."
+      },
+      {
+        "id": "SAS-050-B",
+        "text": "Požadovat bezpečné podmínky a při nezajištěném riziku do domácnosti nevstupovat nebo již zahájenou návštěvu ukončit."
+      },
+      {
+        "id": "SAS-050-C",
+        "text": "Návštěvu uskutečnit jen v omezeném rozsahu u vchodu a řešit zabezpečení psa až při příštím plánovaném kontaktu."
+      }
+    ],
+    "correctAnswerId": "SAS-050-B",
+    "explanation": "Dohodnutá návštěva neznamená povinnost pracovníka vstupovat do nebezpečného prostředí.",
+    "competency": "Bezpečné rozhodování při terénní práci.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-051",
+    "standard": "13",
+    "source": "Standard 13.2 – Podmínky v domácnostech.",
+    "topic": "Posuzování domácího prostředí",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Pracovník při návštěvě vnímá domácnost jako velmi neuspořádanou a materiálně nedostatečně vybavenou. Jak má situaci posuzovat?",
+    "answers": [
+      {
+        "id": "SAS-051-A",
+        "text": "Podle vlastních představ o přiměřené úrovni domácnosti a rodiče k ní vést."
+      },
+      {
+        "id": "SAS-051-B",
+        "text": "Chybějící vybavení co nejrychleji zajistit z prostředků služby, aby byl problém odstraněn."
+      },
+      {
+        "id": "SAS-051-C",
+        "text": "Hodnotit konkrétní dopad podmínek na dítě a s rodinou pracovat na řešení, které podporuje její vlastní schopnosti a odpovědnost."
+      }
+    ],
+    "correctAnswerId": "SAS-051-C",
+    "explanation": "Metodika nevede pracovníka k estetickému hodnocení domácnosti, ale k posouzení bezpečí, potřeb dítěte a možností podpory.",
+    "competency": "Nepaternalistické hodnocení životních podmínek.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-052",
+    "standard": "13",
+    "source": "Standard 13.2 – Respekt k soukromí při terénní práci.",
+    "topic": "Soukromí v domácnosti",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Při běžné terénní návštěvě klient nechce pracovníka pustit do ložnice. Pracovník ví, že tam dítě spí, ale nemá konkrétní informaci o bezprostředním riziku nebo ohrožení. Jaký postup je nejlepší?",
+    "answers": [
+      {
+        "id": "SAS-052-A",
+        "text": "Respektovat vymezené soukromí domácnosti a pracovat v dohodnutých prostorách; případné konkrétní obavy dál zjišťovat přiměřeným způsobem."
+      },
+      {
+        "id": "SAS-052-B",
+        "text": "Přesunout další spolupráci pouze do ambulance, dokud klient nepovolí pracovníkovi přístup do všech místností domácnosti."
+      },
+      {
+        "id": "SAS-052-C",
+        "text": "Požadovat jednorázovou prohlídku ložnice za přítomnosti klienta, protože dítě místnost užívá a SAS musí posoudit celé domácí prostředí."
+      }
+    ],
+    "correctAnswerId": "SAS-052-A",
+    "explanation": "Pracovník je v domácnosti hostem a respektuje soukromí. Bez konkrétního důvodu k zásahu nemá obecné právo kontrolovat všechny místnosti; případné obavy má řešit přiměřeně skutečnému riziku.",
+    "competency": "Rozlišení sociální práce od kontrolního zásahu.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-053",
+    "standard": "14",
+    "source": "Standard 14.2 a 14.5.",
+    "topic": "Evidence incidentu",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Co má podle metodiky následovat po mimořádné události?",
+    "answers": [
+      {
+        "id": "SAS-053-A",
+        "text": "Zápis se pořizuje jen tehdy, pokud zasahovala některá složka IZS."
+      },
+      {
+        "id": "SAS-053-B",
+        "text": "Událost se písemně zaznamená a následně se vyhodnotí její průběh a případná opatření."
+      },
+      {
+        "id": "SAS-053-C",
+        "text": "Pokud byla situace zvládnuta bez zranění, další dokumentace není potřebná."
+      }
+    ],
+    "correctAnswerId": "SAS-053-B",
+    "explanation": "Evidence a následná reflexe mimořádných událostí jsou součástí prevence jejich opakování.",
+    "competency": "Základní postup po incidentu.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-054",
+    "standard": "14",
+    "source": "Standard 14.3 – Agresivní klient.",
+    "topic": "Agrese klienta",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Klient během návštěvy začne být stále agresivnější a nereaguje na snahu situaci uklidnit. Co má pracovník udělat?",
+    "answers": [
+      {
+        "id": "SAS-054-A",
+        "text": "Pokračovat v rozhovoru z větší vzdálenosti a návštěvu ukončit až tehdy, pokud klient přejde k fyzickému napadení."
+      },
+      {
+        "id": "SAS-054-B",
+        "text": "Upozornit klienta na porušování pravidel, požádat jej o zklidnění a před odchodem se pokusit dokončit alespoň nezbytnou část návštěvy."
+      },
+      {
+        "id": "SAS-054-C",
+        "text": "Zachovat klid a odstup, při pokračující agresi návštěvu ukončit a bezpečně odejít; při ohrožení života volat Policii ČR a incident následně oznámit a zaznamenat."
+      }
+    ],
+    "correctAnswerId": "SAS-054-C",
+    "explanation": "Bezpečnost pracovníka má přednost před dokončením plánované návštěvy a metodika stanovuje konkrétní eskalační postup.",
+    "competency": "Praktický bezpečnostní postup při agresi.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-055",
+    "standard": "14",
+    "source": "Standard 14.3 – Zdravotní kolaps nebo úraz.",
+    "topic": "Zdravotní kolaps",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Během aktivity dojde u přítomné osoby k náhlému zdravotnímu kolapsu a pracovník vyhodnotí stav jako život ohrožující. Jak má postupovat?",
+    "answers": [
+      {
+        "id": "SAS-055-A",
+        "text": "Přivolat zdravotnickou záchrannou službu, poskytnout základní první pomoc a zůstat s osobou do příjezdu pomoci."
+      },
+      {
+        "id": "SAS-055-B",
+        "text": "Odvézt osobu vlastním vozidlem do nemocnice, aby se neztrácel čas telefonováním."
+      },
+      {
+        "id": "SAS-055-C",
+        "text": "Zavolat nejprve rodině postiženého a nechat další postup na jejím rozhodnutí."
+      }
+    ],
+    "correctAnswerId": "SAS-055-A",
+    "explanation": "Metodika při závažném zdravotním stavu počítá s voláním ZZS a poskytnutím základní první pomoci.",
+    "competency": "Základní orientaci v akutní zdravotní situaci.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-056",
+    "standard": "14",
+    "source": "Standard 14.3 – Ztracení dítěte při doprovodu.",
+    "topic": "Ztráta dítěte",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Při doprovodu se pracovníkovi ztratí dítě. Pracovník okamžitě prohledal okolí a kontaktoval rodiče i dostupné kolegy, ale dítě se ani po 30 minutách nepodařilo najít. Jaký další postup stanovuje metodika?",
+    "answers": [
+      {
+        "id": "SAS-056-A",
+        "text": "Nejprve kontaktovat OSPOD a policii volat až tehdy, pokud tento orgán doporučí další eskalaci."
+      },
+      {
+        "id": "SAS-056-B",
+        "text": "Kontaktovat Policii ČR na čísle 158, pokračovat v bezpečnostním postupu a po vyřešení událost zaznamenat a vyhodnotit."
+      },
+      {
+        "id": "SAS-056-C",
+        "text": "Pokračovat v hledání společně s rodičem a policii kontaktovat až po delší době, pokud se rodič s tímto krokem ztotožní."
+      }
+    ],
+    "correctAnswerId": "SAS-056-B",
+    "explanation": "Metodika stanovuje po 30 minutách neúspěšného hledání kontaktování Policie ČR. Oznámení není podmíněno předchozím souhlasem rodiče ani doporučením OSPOD.",
+    "competency": "Rozhodnutí, kdy eskalovat situaci na Policii ČR.",
+    "critical": true,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-057",
+    "standard": "15",
+    "source": "Standard 15.2 – Základní rámec systému kvality.",
+    "topic": "Cyklus kvality",
+    "difficulty": "ZÁKLADNÍ",
+    "type": "znalostní",
+    "question": "Který sled kroků odpovídá systému zvyšování kvality popsanému metodikou?",
+    "answers": [
+      {
+        "id": "SAS-057-A",
+        "text": "Kontrola – sankce – náprava – archivace."
+      },
+      {
+        "id": "SAS-057-B",
+        "text": "Vyhodnocení – kontrola – schválení – inspekce."
+      },
+      {
+        "id": "SAS-057-C",
+        "text": "Plánování – realizace – hodnocení – zlepšování."
+      }
+    ],
+    "correctAnswerId": "SAS-057-C",
+    "explanation": "Metodika staví systém kvality na opakujícím se cyklu plánování, realizace, hodnocení a zlepšení.",
+    "competency": "Pochopení základního cyklu kvality.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-058",
+    "standard": "15",
+    "source": "Standard 15.6 – Využití stížností jako nástroje kvality.",
+    "topic": "Stížnosti jako zdroj kvality",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "V průběhu roku se v několika stížnostech opakuje podobné téma. Jak má služba podle metodiky tuto informaci využít?",
+    "answers": [
+      {
+        "id": "SAS-058-A",
+        "text": "Analyzovat opakující se problém a podle výsledku přijmout opatření ke zlepšení služby."
+      },
+      {
+        "id": "SAS-058-B",
+        "text": "Jednotlivé stížnosti vyřídit a dál je nespojovat, protože každý případ je individuální."
+      },
+      {
+        "id": "SAS-058-C",
+        "text": "Zabývat se trendem pouze tehdy, pokud všechny stížnosti byly vyhodnoceny jako zcela oprávněné."
+      }
+    ],
+    "correctAnswerId": "SAS-058-A",
+    "explanation": "Stížnosti jsou v metodice chápány také jako zdroj informací o systémových slabinách služby.",
+    "competency": "Schopnost převést zpětnou vazbu do zlepšování služby.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-059",
+    "standard": "15",
+    "source": "Standard 15.7 – Plán zvyšování kvality.",
+    "topic": "Plán zvyšování kvality",
+    "difficulty": "STŘEDNÍ",
+    "type": "situační",
+    "question": "Jak má být podle metodiky připraven plán zvyšování kvality?",
+    "answers": [
+      {
+        "id": "SAS-059-A",
+        "text": "Jako roční přehled hlavních témat kvality s obecně formulovanými cíli, které tým průběžně konkretizuje podle situace."
+      },
+      {
+        "id": "SAS-059-B",
+        "text": "Na základě zjištění z hodnocení, zpětné vazby, stížností či kontrol, s konkrétními opatřeními, odpovědností a termíny."
+      },
+      {
+        "id": "SAS-059-C",
+        "text": "Především podle nálezů externích kontrol a inspekcí; interní podněty se do plánu doplňují až po jejich externím ověření."
+      }
+    ],
+    "correctAnswerId": "SAS-059-B",
+    "explanation": "Zlepšování kvality má být konkrétní, řízené a kontrolovatelné, nikoli pouze deklarativní.",
+    "competency": "Praktický princip plánování kvality.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  },
+  {
+    "id": "SAS-060",
+    "standard": "15",
+    "source": "Standard 15.3 a 15.7.",
+    "topic": "Neúčinný postup a nápravná opatření",
+    "difficulty": "POKROČILÁ",
+    "type": "situační",
+    "question": "Roční hodnocení ukáže, že pracovníci formálně dodržují schválený postup, ale výsledky v jedné oblasti podpory rodin se dlouhodobě nezlepšují. Tým si není jistý, zda je problém v metodice, organizaci práce nebo v jiných bariérách. Co nejlépe odpovídá systému kvality?",
+    "answers": [
+      {
+        "id": "SAS-060-A",
+        "text": "Považovat oblast za splněnou, protože kontrola potvrdila dodržování postupu, a zaměřit se na jiné nedostatky."
+      },
+      {
+        "id": "SAS-060-B",
+        "text": "Zachovat stávající postup do externí inspekce, aby interní změna neproběhla bez nezávislého potvrzení."
+      },
+      {
+        "id": "SAS-060-C",
+        "text": "Analyzovat příčiny a bariéry, stanovit konkrétní opatření s odpovědností a termínem a následně ověřit jeho dopad na výsledky."
+      }
+    ],
+    "correctAnswerId": "SAS-060-C",
+    "explanation": "Systém kvality nemá sledovat jen formální dodržování postupu. Pokud výsledky neodpovídají cílům, mají být hledány příčiny, přijato konkrétní opatření a jeho účinek následně vyhodnocen.",
+    "competency": "Schopnost používat systém kvality jako skutečný cyklus zlepšování.",
+    "critical": false,
+    "bankVersion": "1.0",
+    "methodologyVersion": "Metodika SAS Emcéčko – přiložená verze",
+    "active": true
+  }
+]

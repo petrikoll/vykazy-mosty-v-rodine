@@ -8,7 +8,8 @@ const legacy = {
 const first = migrateData(legacy);
 const second = migrateData(first);
 
-assert.equal(first.schemaVersion, 6, "push subscriptions use schema version 6");
+assert.equal(first.schemaVersion, 8, "legacy data is upgraded to the current schema version");
+assert.deepEqual(first.methodologyAnswers, [], "legacy data receives an empty methodology answer collection");
 assert.deepEqual(first.pushSubscriptions, [], "legacy data receives an empty push subscription collection");
 assert.equal(first.educationPlans[0].plannedActivities[0].id, "EDA-plan-1-1", "legacy activity receives a deterministic id");
 assert.equal(first.educationPlans[0].plannedActivities[1].topic, "Seminář", "legacy string activity is normalized");
