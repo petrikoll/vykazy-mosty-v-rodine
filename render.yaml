@@ -39,3 +39,5 @@
         value: emceckovm@gmail.com
       - key: GOOGLE_DRIVE_FOLDER_NAME
         value: Mosty v rodině – podepsané výkazy
+      - key: VAPID_SUBJECT
+        value: mailto:emceckovm@gmail.com

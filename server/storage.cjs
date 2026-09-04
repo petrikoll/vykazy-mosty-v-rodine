@@ -7,7 +7,7 @@ const DB_PATH = process.env.APP_DB_PATH
 const BACKUP_PATH = `${DB_PATH}.backup.json`;
 
 const EMPTY_DATA = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   employees: [],
   workReports: [],
   employeeEvaluations: [],
@@ -15,6 +15,7 @@ const EMPTY_DATA = {
   educationRecords: [],
   supervisions: [],
   meetings: [],
+  pushSubscriptions: [],
   auditLog: [],
 };
 
@@ -56,7 +57,7 @@ function migrateData(data) {
     })) : [],
   })) : [];
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     employees,
     workReports: Array.isArray(source.workReports) ? source.workReports : [],
     employeeEvaluations,
@@ -64,6 +65,7 @@ function migrateData(data) {
     educationRecords: Array.isArray(source.educationRecords) ? source.educationRecords : [],
     supervisions: Array.isArray(source.supervisions) ? source.supervisions : [],
     meetings: Array.isArray(source.meetings) ? source.meetings : [],
+    pushSubscriptions: Array.isArray(source.pushSubscriptions) ? source.pushSubscriptions : [],
     auditLog: Array.isArray(source.auditLog) ? source.auditLog.slice(-5000) : [],
   };
 }

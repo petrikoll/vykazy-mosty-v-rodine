@@ -6,6 +6,7 @@ const fsSync = require("node:fs");
 const path = require("node:path");
 const express = require("express");
 const multer = require("multer");
+const webPush = require("web-push");
 
 const { DB_PATH, mutateDb, readDb, writeDb } = require("./server/storage.cjs");
 const {
@@ -44,6 +45,40 @@ let configPromise = null;
 let rulesPromise = null;
 let timeRangePromise = null;
 const loginAttempts = new Map();
+let pushConfigured = false;
+let pushPublicKey = "";
+
+function deriveVapidKeys(secret) {
+  const order = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
+  const seed = crypto.createHash("sha256").update(`mosty-v-rodine:web-push:${secret}`).digest("hex");
+  const scalar = (BigInt(`0x${seed}`) % (order - 1n)) + 1n;
+  const privateKey = Buffer.from(scalar.toString(16).padStart(64, "0"), "hex");
+  const ecdh = crypto.createECDH("prime256v1");
+  ecdh.setPrivateKey(privateKey);
+  return {
+    publicKey: ecdh.getPublicKey().toString("base64url"),
+    privateKey: privateKey.toString("base64url"),
+  };
+}
+
+try {
+  const keys = process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY
+    ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY }
+    : process.env.APP_SETUP_TOKEN
+      ? deriveVapidKeys(process.env.APP_SETUP_TOKEN)
+      : null;
+  if (keys) {
+    webPush.setVapidDetails(
+      process.env.VAPID_SUBJECT || "mailto:emceckovm@gmail.com",
+      keys.publicKey,
+      keys.privateKey,
+    );
+    pushPublicKey = keys.publicKey;
+    pushConfigured = true;
+  }
+} catch (error) {
+  console.error("Web push configuration is invalid:", error.message);
+}
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -171,6 +206,37 @@ function addAudit(db, employee, action, entityType, entityId, details = {}) {
     details,
   });
   db.auditLog = db.auditLog.slice(-5000);
+}
+
+async function sendPushToEmployees(employeeIds, notification) {
+  const recipients = [...new Set((employeeIds || []).filter(Boolean))];
+  if (!pushConfigured || !recipients.length) return { sent: 0, failed: 0, configured: pushConfigured };
+  const db = await readDb();
+  const subscriptions = db.pushSubscriptions.filter((item) => recipients.includes(item.employeeId));
+  const expiredIds = [];
+  let sent = 0;
+  let failed = 0;
+  await Promise.all(subscriptions.map(async (subscription) => {
+    try {
+      await webPush.sendNotification(
+        { endpoint: subscription.endpoint, keys: subscription.keys },
+        JSON.stringify({ icon: "/pwa-icon-192.png", badge: "/pwa-icon-192.png", ...notification }),
+      );
+      sent += 1;
+    } catch (error) {
+      failed += 1;
+      if ([404, 410].includes(error.statusCode)) expiredIds.push(subscription.id);
+      else console.error(`Push notification failed for ${subscription.employeeId}:`, error.message);
+    }
+  }));
+  if (expiredIds.length) {
+    await mutateDb(async (current) => {
+      current.pushSubscriptions = current.pushSubscriptions.filter((item) => !expiredIds.includes(item.id));
+      return { data: current };
+    });
+    await Promise.all(expiredIds.map((id) => deleteRecordSafe("pushSubscription", id)));
+  }
+  return { sent, failed, configured: true };
 }
 
 async function syncRecordSafe(type, record) {
@@ -536,6 +602,70 @@ app.get("/api/portal", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/push/config", requireAuth, (_req, res) => {
+  res.json({ configured: pushConfigured, publicKey: pushConfigured ? pushPublicKey : "" });
+});
+
+app.post("/api/push/subscriptions", requireAuth, async (req, res) => {
+  try {
+    if (!pushConfigured) return res.status(503).json({ error: "Upozornění zatím nejsou na serveru nakonfigurovaná." });
+    const endpoint = normalizeText(req.body?.endpoint, 2000);
+    const p256dh = normalizeText(req.body?.keys?.p256dh, 1000);
+    const auth = normalizeText(req.body?.keys?.auth, 1000);
+    if (!endpoint.startsWith("https://") || !p256dh || !auth) return res.status(400).json({ error: "Prohlížeč neposlal platné přihlášení k upozorněním." });
+    const subscription = await mutateDb(async (db) => {
+      const existing = db.pushSubscriptions.find((item) => item.employeeId === req.auth.employee.id && item.endpoint === endpoint);
+      const timestamp = now();
+      const next = {
+        ...(existing || {}),
+        id: existing?.id || makeId("PSH"),
+        employeeId: req.auth.employee.id,
+        employeeName: req.auth.employee.name,
+        endpoint,
+        keys: { p256dh, auth },
+        createdAt: existing?.createdAt || timestamp,
+        updatedAt: timestamp,
+      };
+      if (existing) Object.assign(existing, next); else db.pushSubscriptions.push(next);
+      addAudit(db, req.auth.employee, "subscribe", "pushSubscription", next.id);
+      return { data: db, value: next };
+    });
+    const sync = await syncRecordSafe("pushSubscription", subscription);
+    res.status(201).json({ subscribed: true, sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/push/subscriptions", requireAuth, async (req, res) => {
+  try {
+    const endpoint = normalizeText(req.body?.endpoint, 2000);
+    const deleted = await mutateDb(async (db) => {
+      const matches = db.pushSubscriptions.filter((item) => item.employeeId === req.auth.employee.id && (!endpoint || item.endpoint === endpoint));
+      db.pushSubscriptions = db.pushSubscriptions.filter((item) => !matches.some((match) => match.id === item.id));
+      return { data: db, value: matches };
+    });
+    await Promise.all(deleted.map((item) => deleteRecordSafe("pushSubscription", item.id)));
+    res.json({ subscribed: false, deleted: deleted.length });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.post("/api/push/test", requireAuth, async (req, res) => {
+  try {
+    const result = await sendPushToEmployees([req.auth.employee.id], {
+      title: "Mosty v rodině",
+      body: "Upozornění jsou zapnutá a dorazí i při zavřené aplikaci.",
+      url: "/",
+      tag: "push-test",
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({ error: "Zkušební upozornění se nepodařilo odeslat.", details: error.message });
+  }
+});
+
 app.post("/api/employees", requireAuth, directorOnly, async (req, res) => {
   try {
     const config = await getConfig();
@@ -799,6 +929,18 @@ app.post("/api/work-reports/submit", requireAuth, async (req, res) => {
     });
     const sync = await Promise.all(saved.map((record) => syncRecordSafe("workReport", record)));
     res.status(201).json({ submissionId, reports: saved, sync });
+    if (req.auth.employee.appRole !== "director") {
+      void readDb().then((db) => {
+        const reviewerRole = req.auth.employee.appRole === "manager" ? "director" : "manager";
+        const reviewerIds = db.employees.filter((item) => item.active !== false && item.appRole === reviewerRole).map((item) => item.id);
+        return sendPushToEmployees(reviewerIds, {
+          title: "Výkaz ke kontrole",
+          body: `${req.auth.employee.name} předal/a ${saved.length === 1 ? "pracovní výkaz" : `${saved.length} pracovní výkazy`} za ${month}/${year}.`,
+          url: "/?open=reports",
+          tag: `report-submission-${submissionId}`,
+        });
+      }).catch((error) => console.error("Report submission notification failed:", error.message));
+    }
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -837,6 +979,16 @@ app.patch("/api/work-reports/:id/status", requireAuth, reportReviewerOnly, async
     });
     const sync = await syncRecordSafe("workReport", report);
     res.json({ report, sync });
+    if (["returned", "approved"].includes(status)) {
+      void sendPushToEmployees([report.employeeId], {
+        title: status === "returned" ? "Výkaz vrácen k úpravě" : "Výkaz schválen",
+        body: status === "returned"
+          ? `${report.positionName} za ${report.month}/${report.year}: ${comment}`
+          : `${report.positionName} za ${report.month}/${report.year} byl schválen k podpisu.`,
+        url: "/?open=reports",
+        tag: `report-status-${report.id}-${status}`,
+      }).catch((error) => console.error("Report status notification failed:", error.message));
+    }
   } catch (error) {
     res.status(error.status || 404).json({ error: error.message });
   }
@@ -1408,6 +1560,15 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
     });
     const sync = await syncRecordSafe("meeting", meeting);
     res.status(201).json({ meeting, sync });
+    if (meeting.status !== "draft") {
+      const ownerIds = (meeting.tasks || []).map((task) => task.ownerId).filter(Boolean);
+      void sendPushToEmployees(ownerIds, {
+        title: "Nový úkol z porady",
+        body: `V zápisu z ${meeting.date} máte přiřazený nový úkol.`,
+        url: "/?open=meetings",
+        tag: `meeting-task-${meeting.id}`,
+      }).catch((error) => console.error("Meeting task notification failed:", error.message));
+    }
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -1452,6 +1613,15 @@ app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
     });
     const sync = await syncRecordSafe("meeting", meeting);
     res.json({ meeting, sync });
+    if (meeting.status !== "draft") {
+      const ownerIds = (meeting.tasks || []).map((task) => task.ownerId).filter(Boolean);
+      void sendPushToEmployees(ownerIds, {
+        title: "Úkoly z porady byly aktualizovány",
+        body: `Zkontrolujte své úkoly ze zápisu z ${meeting.date}.`,
+        url: "/?open=meetings",
+        tag: `meeting-task-${meeting.id}`,
+      }).catch((error) => console.error("Meeting task notification failed:", error.message));
+    }
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message });
   }

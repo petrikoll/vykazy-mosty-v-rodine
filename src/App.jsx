@@ -11,6 +11,7 @@ import Supervisions from "./components/Supervisions.jsx";
 import WorkReports from "./components/WorkReports.jsx";
 import PortalDashboard from "./components/PortalDashboard.jsx";
 import TeamDashboard from "./components/TeamDashboard.jsx";
+import PushNotificationButton from "./components/PushNotificationButton.jsx";
 
 const NAV_GROUPS = [
   { label: "Přehled", items: [{ id: "dashboard", label: "Přehled úkolů", icon: LayoutDashboard }] },
@@ -98,7 +99,11 @@ export default function App() {
   const [options, setOptions] = useState([]);
   const [config, setConfig] = useState(null);
   const [portal, setPortal] = useState(null);
-  const [active, setActive] = useState(() => new URLSearchParams(window.location.search).has("googleDrive") ? "settings" : "dashboard");
+  const [active, setActive] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("open");
+    return params.has("googleDrive") ? "settings" : ["reports", "education", "supervisions", "meetings"].includes(requested) ? requested : "dashboard";
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showPinChange, setShowPinChange] = useState(false);
@@ -126,7 +131,7 @@ export default function App() {
 
   useEffect(() => {
     boot();
-    if (new URLSearchParams(window.location.search).has("googleDrive")) {
+    if (["googleDrive", "open"].some((parameter) => new URLSearchParams(window.location.search).has(parameter))) {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -169,7 +174,7 @@ export default function App() {
       <section className="min-w-0">
         <header className="flex min-h-16 items-center justify-between gap-3 border-b border-blue-800 bg-blue-900 px-4 py-2 text-white shadow-md sm:px-5">
           <div className="flex items-center gap-2 text-sm font-semibold capitalize text-blue-100"><CalendarDays size={16}/>{currentPeriod}</div>
-          <div className="flex items-center gap-2"><div className="mr-1 hidden text-right sm:block"><div className="text-sm font-bold text-white">{employee.name}</div><div className="text-xs text-blue-200">{roleLabel}</div></div><Button variant="secondary" className="px-2.5" onClick={() => setShowPinChange(true)} aria-label="Změnit PIN"><KeyRound size={16}/><span className="ml-2 hidden md:inline">Změnit PIN</span></Button><Button variant="secondary" className="px-2.5" onClick={logout} aria-label="Odhlásit"><LogOut size={16}/><span className="ml-2 hidden md:inline">Odhlásit</span></Button></div>
+          <div className="flex items-center gap-2"><div className="mr-1 hidden text-right sm:block"><div className="text-sm font-bold text-white">{employee.name}</div><div className="text-xs text-blue-200">{roleLabel}</div></div><PushNotificationButton employeeId={employee.id}/><Button variant="secondary" className="px-2.5" onClick={() => setShowPinChange(true)} aria-label="Změnit PIN"><KeyRound size={16}/><span className="ml-2 hidden md:inline">Změnit PIN</span></Button><Button variant="secondary" className="px-2.5" onClick={logout} aria-label="Odhlásit"><LogOut size={16}/><span className="ml-2 hidden md:inline">Odhlásit</span></Button></div>
         </header>
         <main className="p-3 sm:p-5">
         {driveNotice && <div className={`mb-4 rounded-lg border p-3 text-sm font-semibold ${driveNotice.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>{driveNotice.text}</div>}

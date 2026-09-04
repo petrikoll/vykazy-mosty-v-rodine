@@ -37,6 +37,10 @@ const SHEET_HEADERS = {
     "id", "datum", "název", "místo", "účastníci", "program", "rozhodnutí", "úkoly JSON",
     "stav", "PDF na Disku", "zapsal", "aktualizováno", "průběh / zápis", SNAPSHOT_HEADER,
   ],
+  "Upozornění": [
+    "id", "employeeId", "zaměstnanec", "koncový bod", "veřejný klíč zařízení",
+    "ověřovací klíč zařízení", "vytvořeno", "aktualizováno", SNAPSHOT_HEADER,
+  ],
 };
 
 let clientsPromise = null;
@@ -290,6 +294,8 @@ function valuesForRecord(type, record) {
       return [record.id, record.date, record.type === "group" ? "team" : record.type, record.supervisor, record.timeFrom || "", record.timeTo || "", record.hours, (record.participantNames || []).join(", "), record.createdByName, record.createdAt];
     case "meeting":
       return [record.id, record.date, record.title, record.location, (record.participantNames || []).join(", "), record.agenda, record.decisions, JSON.stringify(record.tasks || []), record.status, record.driveFileUrl || "", record.createdByName, record.updatedAt, record.notes || ""];
+    case "pushSubscription":
+      return [record.id, record.employeeId, record.employeeName, record.endpoint, record.keys?.p256dh || "", record.keys?.auth || "", record.createdAt, record.updatedAt];
     default:
       throw new Error(`Neznámý typ záznamu: ${type}`);
   }
@@ -303,6 +309,7 @@ const TYPE_TO_SHEET = {
   educationRecord: "Vzdělávání",
   supervision: "Supervize",
   meeting: "Porady",
+  pushSubscription: "Upozornění",
 };
 
 const TYPE_TO_COLLECTION = {
@@ -313,6 +320,7 @@ const TYPE_TO_COLLECTION = {
   educationRecord: "educationRecords",
   supervision: "supervisions",
   meeting: "meetings",
+  pushSubscription: "pushSubscriptions",
 };
 
 async function syncRecord(type, record) {
@@ -330,7 +338,7 @@ async function ensureSheets() {
 async function loadDatabaseSnapshot() {
   if (!getStatus().sheetsConfigured) throw new Error("Google Sheets nejsou nakonfigurované jako trvalé úložiště.");
   const snapshot = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     employees: [],
     workReports: [],
     employeeEvaluations: [],
@@ -338,6 +346,7 @@ async function loadDatabaseSnapshot() {
     educationRecords: [],
     supervisions: [],
     meetings: [],
+    pushSubscriptions: [],
     auditLog: [],
   };
   const entries = Object.entries(TYPE_TO_SHEET);
