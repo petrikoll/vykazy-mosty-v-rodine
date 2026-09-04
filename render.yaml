@@ -5,16 +5,37 @@
     plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
       - key: APP_DB_PATH
-        value: /var/data/app-db.json
+        value: /tmp/mosty-data/app-db.json
+      - key: APP_SETUP_TOKEN
+        generateValue: true
       - key: GEMINI_API_KEY
         sync: false
-    disk:
-      name: vykazy-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: GEMINI_DOCUMENT_MODEL
+        value: gemini-2.5-flash
+      - key: GOOGLE_SERVICE_ACCOUNT_BASE64
+        sync: false
+      - key: GOOGLE_SHEETS_ID
+        value: 1D1NP6KaxdEgFFUm_RTt66YjXHv5lGiAW1OuwiZrKV18
+      - key: GOOGLE_SHEETS_PRIMARY
+        value: "true"
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_DRIVE_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_DRIVE_ROOT_FOLDER_ID
+        sync: false
+      - key: GOOGLE_DRIVE_ALLOWED_EMAIL
+        value: emceckovm@gmail.com
+      - key: GOOGLE_DRIVE_ACCOUNT_EMAIL
+        value: emceckovm@gmail.com
+      - key: GOOGLE_DRIVE_FOLDER_NAME
+        value: Mosty v rodině – podepsané výkazy

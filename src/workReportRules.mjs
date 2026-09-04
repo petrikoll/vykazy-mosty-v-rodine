@@ -33,22 +33,30 @@ export const isPeerRole = () => false;
 export const calculateRoleMetrics = ({ role, positionDef, month, year, absences, totalFte }) => {
   const workingDays = getWorkingDays(month, year);
   const totalFundHours = workingDays * 8;
-  const roleFte = Number(role?.fte || 0);
+  const allocationType = role?.allocationType || positionDef?.allocationType || "fte";
+  const isHourly = allocationType === "hours";
+  const roleFte = isHourly
+    ? Number(role?.fte || positionDef?.fte || 0) || Number(role?.monthlyHours || positionDef?.monthlyHours || 0) / totalFundHours
+    : Number(role?.fte || 0);
   const roleIsPeer = isPeerRole(positionDef);
-  const maxHoursForRole = totalFundHours * roleFte;
+  const maxHoursForRole = isHourly
+    ? Number(role?.monthlyHours || positionDef?.monthlyHours || 0)
+    : totalFundHours * roleFte;
   const fteShare = Number(totalFte || 0) > 0 ? roleFte / Number(totalFte || 0) : 0;
-  const absHours = {
-    vacation: Number(absences.vacation || 0) * 8 * roleFte,
-    sickLeave: Number(absences.sickLeave || 0) * 8 * roleFte,
-    otherObstacles:
-      absences.otherObstaclesUnit === "hours"
-        ? Number(absences.otherObstacles || 0) * fteShare
-        : Number(absences.otherObstacles || 0) * 8 * roleFte,
-    doctorVisit: Number(absences.doctorVisitHours || 0) * fteShare,
-    holiday: Number(absences.holiday || 0) * 8 * roleFte,
-  };
+  const absHours = isHourly
+    ? { vacation: 0, sickLeave: 0, otherObstacles: 0, doctorVisit: 0, holiday: 0 }
+    : {
+        vacation: Number(absences.vacation || 0) * 8 * roleFte,
+        sickLeave: Number(absences.sickLeave || 0) * 8 * roleFte,
+        otherObstacles:
+          absences.otherObstaclesUnit === "hours"
+            ? Number(absences.otherObstacles || 0) * fteShare
+            : Number(absences.otherObstacles || 0) * 8 * roleFte,
+        doctorVisit: Number(absences.doctorVisitHours || 0) * fteShare,
+        holiday: Number(absences.holiday || 0) * 8 * roleFte,
+      };
   const totalAbsenceHours = absHours.vacation + absHours.sickLeave + absHours.otherObstacles + absHours.doctorVisit + absHours.holiday;
-  return { workingDays, totalFundHours, roleFte, roleIsPeer, maxHoursForRole, absHours, totalAbsenceHours };
+  return { workingDays, totalFundHours, roleFte, roleIsPeer, allocationType, maxHoursForRole, absHours, totalAbsenceHours };
 };
 
 export const calculateTotalMetrics = ({ roles, positions, month, year, absences, activities, totalFte }) => {

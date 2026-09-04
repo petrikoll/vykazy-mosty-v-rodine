@@ -1,0 +1,115 @@
+import React, { useEffect, useState } from "react";
+import { X } from "lucide-react";
+
+export function useTimedNotice(initialValue = null, delay = 3000) {
+  const [notice, setNotice] = useState(initialValue);
+  useEffect(() => {
+    if (!notice || !["success", "ok"].includes(notice.type)) return undefined;
+    const currentNotice = notice;
+    const timer = window.setTimeout(() => {
+      setNotice((current) => current === currentNotice ? null : current);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [notice, delay]);
+  return [notice, setNotice];
+}
+
+export const Notice = ({ notice, className = "" }) => {
+  if (!notice) return null;
+  const colors = notice.type === "error"
+    ? "border-red-200 bg-red-50 text-red-700"
+    : notice.type === "warn"
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : notice.type === "info"
+        ? "border-blue-200 bg-blue-50 text-blue-800"
+        : "border-emerald-200 bg-emerald-50 text-emerald-800";
+  return <div className={`rounded-lg border p-3 text-sm font-semibold ${colors} ${className}`} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>;
+};
+
+export const Field = ({ label, children, hint }) => (
+  <label className="block text-xs font-semibold text-slate-700">
+    <span className="mb-1 block leading-4">{label}</span>
+    {children}
+    {hint && <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">{hint}</span>}
+  </label>
+);
+
+export const Input = (props) => (
+  <input {...props} className={`min-h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 ${props.className || ""}`} />
+);
+
+export const Textarea = ({ compact = false, className = "", ...props }) => (
+  <textarea {...props} className={`${compact ? "min-h-10" : "min-h-20"} w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 ${className}`} />
+);
+
+export const Select = (props) => (
+  <select {...props} className={`min-h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 ${props.className || ""}`} />
+);
+
+export const Button = ({ variant = "primary", className = "", ...props }) => {
+  const variants = {
+    primary: "bg-blue-700 text-white hover:bg-blue-800",
+    secondary: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+    success: "bg-emerald-600 text-white hover:bg-emerald-700",
+    danger: "border border-red-300 bg-white text-red-700 hover:bg-red-50",
+  };
+  return <button {...props} className={`min-h-9 rounded-md px-3 py-1.5 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`} />;
+};
+
+export const Card = ({ title, subtitle, actions, children, className = "" }) => (
+  <section className={`rounded-xl border border-slate-300 bg-white p-4 shadow-md shadow-slate-200/60 ${className}`}>
+    {(title || actions) && (
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          {title && <h2 className="text-base font-bold text-slate-900">{title}</h2>}
+          {subtitle && <p className="mt-0.5 text-xs leading-5 text-slate-500">{subtitle}</p>}
+        </div>
+        {actions}
+      </div>
+    )}
+    {children}
+  </section>
+);
+
+export const StatusBadge = ({ status }) => {
+  const labels = {
+    draft: "Koncept", submitted: "Předáno", ready_for_signature: "Připraveno k podpisu", returned: "Vráceno k opravě",
+    approved: "Schváleno", printed: "Vytištěno", signed_archived: "Podepsáno a archivováno",
+    closed: "Uzavřeno", missing_evaluation: "Nezahájeno",
+    archived: "Archivováno", missing: "Nepředáno", missing_plan: "Plán nezaložen",
+  };
+  const colors = {
+    draft: "bg-slate-100 text-slate-700", submitted: "bg-amber-100 text-amber-800", ready_for_signature: "bg-blue-100 text-blue-800",
+    returned: "bg-red-100 text-red-700", approved: "bg-emerald-100 text-emerald-700",
+    closed: "bg-emerald-100 text-emerald-700", missing_evaluation: "bg-slate-100 text-slate-600",
+    printed: "bg-blue-100 text-blue-700", signed_archived: "bg-violet-100 text-violet-700",
+    archived: "bg-violet-100 text-violet-700", missing: "bg-slate-100 text-slate-600",
+    missing_plan: "bg-slate-100 text-slate-600",
+  };
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${colors[status] || colors.draft}`}>{labels[status] || status}</span>;
+};
+
+export const Empty = ({ children }) => <p className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">{children}</p>;
+
+export function Modal({ title, subtitle, onClose, children, className = "max-w-6xl" }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => { if (event.key === "Escape") onClose(); };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-3 sm:p-5" role="dialog" aria-modal="true" aria-label={title} onMouseDown={onClose}>
+    <div className={`flex max-h-[calc(100vh-1.5rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-2xl sm:max-h-[calc(100vh-2.5rem)] ${className}`} onMouseDown={(event) => event.stopPropagation()}>
+      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3">
+        <div><h2 className="text-lg font-bold text-slate-900">{title}</h2>{subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}</div>
+        <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={onClose} aria-label="Zavřít"><X size={20}/></button>
+      </div>
+      <div className="overflow-y-auto p-3 sm:p-4">{children}</div>
+    </div>
+  </div>;
+}

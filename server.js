@@ -1,258 +1,1694 @@
-﻿require("dotenv").config();
-const express = require("express");
+require("dotenv").config();
+
+const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const path = require("node:path");
+const express = require("express");
+const multer = require("multer");
+
+const { DB_PATH, mutateDb, readDb, writeDb } = require("./server/storage.cjs");
+const {
+  authMiddleware,
+  bearerToken,
+  createSession,
+  deleteSession,
+  hashPin,
+  directorOnly,
+  leaderOnly,
+  publicEmployee,
+  verifyPin,
+} = require("./server/auth.cjs");
+const googleWorkspace = require("./server/googleWorkspace.cjs");
+const { allowedEducationPlanStatuses, canManageEducationPlan } = require("./server/educationPolicy.cjs");
+const { canManageEmployeeEvaluation, canViewEmployeeEvaluation } = require("./server/evaluationPolicy.cjs");
+const { fileHash, findDuplicateByFileHash } = require("./server/fileDeduplication.cjs");
+const {
+  analyzeBundles,
+  mergeMappedCandidates,
+  removeImport,
+} = require("./server/signedReportImport.cjs");
 
 const app = express();
-
 const PORT = Number(process.env.PORT || 3001);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024, files: 1 },
+});
+const signedReportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024, files: 50 },
+});
+const requireAuth = authMiddleware(readDb);
+let configPromise = null;
+let rulesPromise = null;
+let timeRangePromise = null;
+const loginAttempts = new Map();
 
-const DB_PATH = process.env.APP_DB_PATH
-  ? path.resolve(process.env.APP_DB_PATH)
-  : path.join(__dirname, "data", "app-db.json");
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+app.use(express.json({ limit: "8mb" }));
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (req.path.startsWith("/api/")) res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
-const BACKUP_PATH = `${DB_PATH}.backup.json`;
-
-const DEFAULT_DATA = {
-  positions: [],
-  employees: []
+const now = () => new Date().toISOString();
+const makeId = (prefix) => `${prefix}-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
+const normalizeText = (value, maxLength = 10000) => String(value || "").trim().slice(0, maxLength);
+const nonnegativeNumber = (value, fallback = 0) => {
+  const parsed = value === undefined || value === null || value === "" ? Number(fallback) : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Číselná hodnota musí být nezáporná a konečná.");
+  return parsed;
 };
+const safeName = (value) => normalizeText(value, 150).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_") || "soubor";
+const slugify = (value) =>
+  normalizeText(value, 100)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+const exportName = (value) =>
+  normalizeText(value, 100)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
 
-app.use(express.json({ limit: "2mb" }));
+function safeSecretEqual(actual, expected) {
+  const actualBuffer = Buffer.from(String(actual || ""));
+  const expectedBuffer = Buffer.from(String(expected || ""));
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
 
-function migrateData(data) {
-  const positions = Array.isArray(data?.positions) ? data.positions : DEFAULT_DATA.positions;
-  const employees = Array.isArray(data?.employees) ? data.employees : DEFAULT_DATA.employees;
+async function getConfig() {
+  if (!configPromise) configPromise = import("./src/projectConfig.mjs");
+  return configPromise;
+}
 
-  const migratedEmployees = employees.map((employee) => ({
-    ...employee,
-    roles: Array.isArray(employee.roles)
-      ? employee.roles.map((role) => ({
-          ...role,
-          contractType: "PS"
-        }))
-      : []
-  }));
+async function getRules() {
+  if (!rulesPromise) rulesPromise = import("./src/workReportRules.mjs");
+  return rulesPromise;
+}
 
-  return {
-    positions,
-    employees: migratedEmployees
+async function getTimeRange() {
+  if (!timeRangePromise) timeRangePromise = import("./src/timeRange.mjs");
+  return timeRangePromise;
+}
+
+function loginAttemptKey(req) {
+  return `${req.ip || req.socket.remoteAddress || "unknown"}:${normalizeText(req.body?.employeeId, 100)}`;
+}
+
+function isLoginBlocked(key) {
+  const state = loginAttempts.get(key);
+  if (!state) return false;
+  if (state.resetAt <= Date.now()) {
+    loginAttempts.delete(key);
+    return false;
+  }
+  return state.count >= 8;
+}
+
+function registerFailedLogin(key) {
+  const current = loginAttempts.get(key);
+  const resetAt = current?.resetAt > Date.now() ? current.resetAt : Date.now() + 15 * 60 * 1000;
+  loginAttempts.set(key, { count: (current?.resetAt > Date.now() ? current.count : 0) + 1, resetAt });
+}
+
+function addAudit(db, employee, action, entityType, entityId, details = {}) {
+  db.auditLog.push({
+    id: makeId("AUD"),
+    at: now(),
+    employeeId: employee?.id || "system",
+    employeeName: employee?.name || "Systém",
+    action,
+    entityType,
+    entityId,
+    details,
+  });
+  db.auditLog = db.auditLog.slice(-5000);
+}
+
+async function syncRecordSafe(type, record) {
+  try {
+    return await googleWorkspace.syncRecord(type, record);
+  } catch (error) {
+    console.error(`Google sync failed for ${type} ${record.id}:`, error);
+    if (process.env.GOOGLE_SHEETS_PRIMARY === "true") throw error;
+    return { synced: false, reason: "error", error: error.message };
+  }
+}
+
+async function deleteRecordSafe(type, recordId) {
+  try {
+    return await googleWorkspace.deleteRecord(type, recordId);
+  } catch (error) {
+    console.error(`Google row delete failed for ${type} ${recordId}:`, error);
+    if (process.env.GOOGLE_SHEETS_PRIMARY === "true") throw error;
+    return { synced: false, reason: "error", error: error.message };
+  }
+}
+
+async function trashFileSafe(fileId) {
+  if (!fileId) return { trashed: false, reason: "missing-id" };
+  try {
+    return await googleWorkspace.trashFile(fileId);
+  } catch (error) {
+    console.error(`Google Drive trash failed for ${fileId}:`, error);
+    return { trashed: false, reason: "error", error: error.message };
+  }
+}
+
+function deleteSimpleRecordHandler({ collection, type, label }) {
+  return async (req, res) => {
+    try {
+      const deleted = await mutateDb(async (db) => {
+        const index = db[collection].findIndex((item) => item.id === req.params.id);
+        if (index < 0) {
+          const missing = new Error(`${label} nebyl nalezen.`);
+          missing.status = 404;
+          throw missing;
+        }
+        const [item] = db[collection].splice(index, 1);
+        addAudit(db, req.auth.employee, "delete", type, item.id, { label });
+        return { data: db, value: item };
+      });
+      const [sheet, drive] = await Promise.all([
+        deleteRecordSafe(type, deleted.id),
+        trashFileSafe(deleted.driveFileId),
+      ]);
+      res.json({ deleted: true, id: deleted.id, sheet, drive });
+    } catch (error) {
+      res.status(error.status || 400).json({ error: error.message });
+    }
   };
 }
 
-async function ensureDbFile() {
-  await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
+function publicGoogleStatus(employee = null) {
+  const status = googleWorkspace.getStatus();
+  return {
+    configured: status.configured,
+    credentialsConfigured: status.credentialsConfigured,
+    sheetsConfigured: status.sheetsConfigured,
+    driveConfigured: status.driveConfigured,
+    driveOAuthConfigured: status.driveOAuthConfigured,
+    driveConnected: status.driveConnected,
+    driveMode: status.driveMode,
+    driveAccountEmail: status.driveAccountEmail,
+    driveAllowedEmail: status.driveAllowedEmail,
+    driveFolderUrl: employee?.appRole === "director" ? status.driveFolderUrl : "",
+    spreadsheetId: status.spreadsheetId,
+    error: status.error || "",
+  };
+}
 
-  try {
-    await fs.access(DB_PATH);
-  } catch {
-    await fs.writeFile(DB_PATH, JSON.stringify(DEFAULT_DATA, null, 2), "utf8");
+function reportReviewerOnly(req, res, next) {
+  if (!["manager", "director"].includes(req.auth?.employee?.appRole)) {
+    return res.status(403).json({ error: "Tato akce je dostupná pouze Odbornému garantovi nebo Vedoucí služby/programu." });
+  }
+  return next();
+}
+
+function signedReportUploaderOnly(req, res, next) {
+  if (!["manager", "director"].includes(req.auth?.employee?.appRole)) {
+    return res.status(403).json({ error: "Podepsané výkazy může nahrávat Odborný garant nebo Vedoucí služby/programu." });
+  }
+  return next();
+}
+
+function canReviewReport(db, reviewer, report) {
+  const owner = db.employees.find((item) => item.id === report?.employeeId);
+  return Boolean(owner && (
+    (reviewer.appRole === "manager" && owner.appRole === "worker")
+    || (reviewer.appRole === "director" && owner.appRole === "manager")
+  ));
+}
+
+function reviewableReports(db, reviewer) {
+  return db.workReports.filter((report) => canReviewReport(db, reviewer, report));
+}
+
+function signedUploadReports(db, uploader) {
+  if (!["manager", "director"].includes(uploader.appRole)) return [];
+  return db.workReports.filter((report) => {
+    if (report.employeeId === uploader.id) {
+      const ownStatuses = uploader.appRole === "director"
+        ? ["ready_for_signature", "approved", "printed"]
+        : ["approved", "printed"];
+      return ownStatuses.includes(report.status);
+    }
+    return canReviewReport(db, uploader, report) && ["approved", "printed"].includes(report.status);
+  });
+}
+
+function assertAssignmentsAvailable(db, assignments, positions, excludedEmployeeId = "") {
+  const positionIds = assignments.map((assignment) => assignment.positionId);
+  const duplicateId = positionIds.find((positionId, index) => positionIds.indexOf(positionId) !== index);
+  if (duplicateId) {
+    const position = positions.find((item) => item.id === duplicateId);
+    throw new Error(`Pozice „${position?.name || duplicateId}“ byla vybrána vícekrát.`);
+  }
+  for (const positionId of positionIds) {
+    const owner = db.employees.find((employee) => employee.id !== excludedEmployeeId
+      && employee.active !== false
+      && (employee.assignments || []).some((assignment) => assignment.positionId === positionId));
+    if (owner) {
+      const position = positions.find((item) => item.id === positionId);
+      const conflict = new Error(`Pozice „${position?.name || positionId}“ je již přiřazena pracovníkovi ${owner.name}.`);
+      conflict.status = 409;
+      throw conflict;
+    }
   }
 }
 
-async function readDb() {
-  await ensureDbFile();
-
-  const raw = await fs.readFile(DB_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-
-  return migrateData(parsed);
+function visiblePortalData(db, employee) {
+  const manager = employee.appRole === "manager";
+  const director = employee.appRole === "director";
+  const leader = manager || director;
+  const isParticipant = (record) => (record.participantIds || []).includes(employee.id);
+  const managerVisibleReports = db.workReports.filter((item) => item.employeeId === employee.id || canReviewReport(db, employee, item));
+  return {
+    employees: (leader ? db.employees : [employee]).map(publicEmployee),
+    workReports: manager ? managerVisibleReports : director
+      ? db.workReports
+      : db.workReports.filter((item) => item.employeeId === employee.id),
+    employeeEvaluations: db.employeeEvaluations.filter((item) => {
+      const target = db.employees.find((candidate) => candidate.id === item.employeeId);
+      if (!canViewEmployeeEvaluation(employee, target)) return false;
+      return target?.id !== employee.id || item.status === "closed";
+    }),
+    educationPlans: db.educationPlans.filter((item) => leader || item.employeeId === employee.id),
+    educationRecords: db.educationRecords.filter((item) => leader || item.employeeId === employee.id),
+    supervisions: db.supervisions.filter((item) => leader || isParticipant(item)),
+    meetings: db.meetings.filter((item) => leader || isParticipant(item) || item.createdBy === employee.id),
+  };
 }
 
-async function writeDb(data) {
-  await ensureDbFile();
-
-  const normalizedData = migrateData(data);
-
-  try {
-    await fs.copyFile(DB_PATH, BACKUP_PATH);
-  } catch {
-    // Pokud ještě není co zálohovat, pokračujeme dál.
+async function callGemini({ promptText, systemInstruction, responseSchema, model: requestedModel, inlineData }) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("Chybí GEMINI_API_KEY na serveru.");
+  const model = requestedModel || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const parts = [{ text: promptText }];
+  if (inlineData) parts.push({ inlineData });
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: { responseMimeType: "application/json", responseSchema },
+      }),
+    }
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload?.error?.message || `Gemini API vrátilo HTTP ${response.status}.`);
   }
-
-  await fs.writeFile(DB_PATH, JSON.stringify(normalizedData, null, 2), "utf8");
-
-  return normalizedData;
+  const payload = await response.json();
+  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Gemini nevrátilo použitelnou odpověď.");
+  return JSON.parse(text);
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({
-    ok: true,
-    dbPath: DB_PATH,
-    time: new Date().toISOString()
-  });
+  res.json({ ok: true, google: publicGoogleStatus(), time: now() });
 });
 
-app.get("/api/data", async (_req, res) => {
+app.get("/api/google-drive/callback", async (req, res) => {
+  const target = new URL(googleWorkspace.driveAppUrl());
+  try {
+    if (req.query.error) throw new Error("Připojení Google Drive bylo zrušeno.");
+    await googleWorkspace.completeDriveAuthorization(req.query.code, req.query.state);
+    target.searchParams.set("googleDrive", "connected");
+  } catch (error) {
+    console.error("Google Drive OAuth callback failed:", error);
+    target.searchParams.set("googleDrive", "error");
+    target.searchParams.set("reason", error.message);
+  }
+  res.redirect(target.toString());
+});
+
+app.post("/api/google-drive/connect", requireAuth, directorOnly, (req, res) => {
+  try {
+    const authorizationUrl = googleWorkspace.getDriveAuthorizationUrl(req.auth.employee.id);
+    res.json({ authorizationUrl });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/google-drive/connect", requireAuth, directorOnly, async (req, res) => {
+  try {
+    await googleWorkspace.disconnectDrive();
+    res.json({ ok: true, google: publicGoogleStatus(req.auth.employee) });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get("/api/config", async (_req, res) => {
+  try {
+    const config = await getConfig();
+    res.json({ project: config.PROJECT, keyActivities: config.KEY_ACTIVITIES, positions: config.POSITIONS });
+  } catch (error) {
+    res.status(500).json({ error: "Nelze načíst projektovou konfiguraci.", details: error.message });
+  }
+});
+
+app.get("/api/setup/status", async (_req, res) => {
   try {
     const db = await readDb();
-    res.json(db);
-  } catch (error) {
-    console.error("GET /api/data failed:", error);
-    res.status(500).json({
-      error: "Nelze načíst data.",
-      details: error.message
+    res.json({
+      needsSetup: !db.employees.some((item) => item.appRole === "manager"),
+      setupCodeRequired: Boolean(process.env.APP_SETUP_TOKEN),
+      google: publicGoogleStatus(),
     });
+  } catch (error) {
+    res.status(500).json({ error: "Nelze zjistit stav aplikace.", details: error.message });
   }
 });
 
-app.put("/api/data", async (req, res) => {
+app.post("/api/setup/bootstrap", async (req, res) => {
   try {
-    const { positions, employees } = req.body || {};
-
-    if (!Array.isArray(positions) || !Array.isArray(employees)) {
-      return res.status(400).json({
-        error: "Neplatný formát dat. Očekávám pole positions a employees."
-      });
+    const name = normalizeText(req.body?.name, 120);
+    if (process.env.APP_SETUP_TOKEN && !safeSecretEqual(req.body?.setupCode, process.env.APP_SETUP_TOKEN)) {
+      return res.status(403).json({ error: "Nesprávný instalační kód." });
     }
-
-    const savedData = await writeDb({ positions, employees });
-
-    return res.json({
-      ok: true,
-      data: savedData
-    });
-  } catch (error) {
-    console.error("PUT /api/data failed:", error);
-    return res.status(500).json({
-      error: "Nelze uložit data.",
-      details: error.message
-    });
-  }
-});
-
-app.post("/api/ai/generate", async (req, res) => {
-  try {
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({
-        error: "Chybí GEMINI_API_KEY na serveru."
-      });
-    }
-
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-    const {
-      promptText,
-      systemInstruction = "Jsi asistent pro tvůrce pracovních výkazů v projektech OPZ+. Výstup VŽDY poskytni jako JSON pole objektů s klíči 'desc' (popis) a 'hours' (hodiny jako číslo)."
-    } = req.body || {};
-
-    if (!promptText || typeof promptText !== "string") {
-      return res.status(400).json({
-        error: "Chybí promptText."
-      });
-    }
-
-    const payload = {
-      contents: [
-        {
-          parts: [
-            {
-              text: promptText
-            }
-          ]
-        }
-      ],
-      systemInstruction: {
-        parts: [
-          {
-            text: systemInstruction
-          }
-        ]
-      },
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "ARRAY",
-          items: {
-            type: "OBJECT",
-            properties: {
-              desc: { type: "STRING" },
-              hours: { type: "NUMBER" }
-            },
-            required: ["desc", "hours"]
-          }
-        }
+    if (!name) return res.status(400).json({ error: "Zadejte jméno Odborného garanta." });
+    const employee = await mutateDb(async (db) => {
+      if (db.employees.some((item) => item.appRole === "manager")) {
+        const conflict = new Error("Počáteční nastavení už proběhlo.");
+        conflict.status = 409;
+        throw conflict;
       }
+      const item = {
+        id: `${slugify(name) || "vedouci"}-${crypto.randomBytes(3).toString("hex")}`,
+        name,
+        exportName: exportName(name),
+        appRole: "manager",
+        globalFte: nonnegativeNumber(req.body?.globalFte, 0.2),
+        assignments: [{ id: makeId("ASG"), positionId: "expert-guarantor" }],
+        pinHash: hashPin("0000"),
+        pinMustChange: true,
+        active: true,
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      db.employees.push(item);
+      addAudit(db, item, "bootstrap", "employee", item.id);
+      return { data: db, value: item };
+    });
+    const token = createSession(employee.id);
+    const sync = await syncRecordSafe("employee", employee);
+    res.status(201).json({ token, employee: publicEmployee(employee), sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.get("/api/auth/options", async (_req, res) => {
+  try {
+    const db = await readDb();
+    res.json(db.employees.filter((item) => item.active !== false).map((item) => ({ id: item.id, name: item.name, appRole: item.appRole })));
+  } catch (error) {
+    res.status(500).json({ error: "Nelze načíst uživatele.", details: error.message });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const attemptKey = loginAttemptKey(req);
+    if (isLoginBlocked(attemptKey)) {
+      return res.status(429).json({ error: "Příliš mnoho neúspěšných pokusů. Přihlášení zkuste za 15 minut." });
+    }
+    const db = await readDb();
+    const employee = db.employees.find((item) => item.id === req.body?.employeeId && item.active !== false);
+    if (!employee || !verifyPin(String(req.body?.pin || ""), employee.pinHash)) {
+      registerFailedLogin(attemptKey);
+      return res.status(401).json({ error: "Nesprávný uživatel nebo PIN." });
+    }
+    loginAttempts.delete(attemptKey);
+    const token = createSession(employee.id);
+    const sync = await syncRecordSafe("employee", employee);
+    res.json({ token, employee: publicEmployee(employee), sync });
+  } catch (error) {
+    res.status(500).json({ error: "Přihlášení selhalo.", details: error.message });
+  }
+});
+
+app.post("/api/auth/logout", requireAuth, (req, res) => {
+  deleteSession(bearerToken(req));
+  res.json({ ok: true });
+});
+
+app.post("/api/auth/change-pin", requireAuth, async (req, res) => {
+  try {
+    const currentPin = String(req.body?.currentPin || "");
+    const newPin = String(req.body?.newPin || "");
+    if (currentPin === newPin) {
+      return res.status(400).json({ error: "Nový PIN musí být jiný než současný." });
+    }
+    const employee = await mutateDb(async (db) => {
+      const index = db.employees.findIndex((item) => item.id === req.auth.employee.id && item.active !== false);
+      if (index < 0) {
+        const missing = new Error("Pracovník nebyl nalezen.");
+        missing.status = 404;
+        throw missing;
+      }
+      const current = db.employees[index];
+      if (!verifyPin(currentPin, current.pinHash)) {
+        const invalid = new Error("Současný PIN není správný.");
+        invalid.status = 401;
+        throw invalid;
+      }
+      const timestamp = now();
+      const next = {
+        ...current,
+        pinHash: hashPin(newPin),
+        pinMustChange: false,
+        pinChangedAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.employees[index] = next;
+      addAudit(db, next, "change_pin", "employee", next.id);
+      return { data: db, value: next };
+    });
+    const sync = await syncRecordSafe("employee", employee);
+    res.json({ ok: true, employee: publicEmployee(employee), sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.get("/api/portal", requireAuth, async (req, res) => {
+  try {
+    const db = await readDb();
+    res.json({ employee: publicEmployee(req.auth.employee), ...visiblePortalData(db, req.auth.employee), google: publicGoogleStatus(req.auth.employee) });
+  } catch (error) {
+    res.status(500).json({ error: "Nelze načíst portál.", details: error.message });
+  }
+});
+
+app.post("/api/employees", requireAuth, directorOnly, async (req, res) => {
+  try {
+    const config = await getConfig();
+    const name = normalizeText(req.body?.name, 120);
+    if (!name) return res.status(400).json({ error: "Jméno pracovníka je povinné." });
+    const appRole = req.body?.appRole === "manager" ? "manager" : "worker";
+    const requestedAssignments = Array.isArray(req.body?.assignments) ? req.body.assignments : [];
+    if (requestedAssignments.some((assignment) => assignment.positionId === "service-manager")) {
+      return res.status(400).json({ error: "Pozice Vedoucí služby/programu patří pouze jejímu vlastnímu účtu." });
+    }
+    if (appRole === "worker" && requestedAssignments.some((assignment) => assignment.positionId === "expert-guarantor")) {
+      return res.status(400).json({ error: "Pozice Odborný garant vyžaduje odpovídající typ účtu." });
+    }
+    const normalizedAssignments = appRole === "manager" && !requestedAssignments.some((assignment) => assignment.positionId === "expert-guarantor")
+      ? [{ positionId: "expert-guarantor" }, ...requestedAssignments]
+      : requestedAssignments;
+    const assignments = normalizedAssignments.map((assignment) => {
+      const position = config.POSITIONS.find((item) => item.id === assignment.positionId && item.active !== false && item.reportRequired);
+      if (!position) throw new Error(`Neplatná pozice nebo pozice bez pracovního výkazu: ${assignment.positionId}`);
+      return {
+        id: assignment.id || makeId("ASG"),
+        positionId: position.id,
+        ...(assignment.fte !== undefined ? { fte: nonnegativeNumber(assignment.fte) } : {}),
+        ...(assignment.monthlyHours !== undefined ? { monthlyHours: nonnegativeNumber(assignment.monthlyHours) } : {}),
+      };
+    });
+    const employee = await mutateDb(async (db) => {
+      assertAssignmentsAvailable(db, normalizedAssignments, config.POSITIONS);
+      const item = {
+        id: `${slugify(name) || "pracovnik"}-${crypto.randomBytes(3).toString("hex")}`,
+        name,
+        exportName: exportName(name),
+        appRole,
+        globalFte: nonnegativeNumber(req.body?.globalFte, 1),
+        assignments,
+        pinHash: hashPin("0000"),
+        pinMustChange: true,
+        active: true,
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      db.employees.push(item);
+      addAudit(db, req.auth.employee, "create", "employee", item.id);
+      return { data: db, value: item };
+    });
+    const sync = await syncRecordSafe("employee", employee);
+    res.status(201).json({ ...publicEmployee(employee), sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.patch("/api/employees/:id", requireAuth, directorOnly, async (req, res) => {
+  try {
+    const config = await getConfig();
+    const employee = await mutateDb(async (db) => {
+      const index = db.employees.findIndex((item) => item.id === req.params.id);
+      if (index < 0) throw new Error("Pracovník nebyl nalezen.");
+      const current = db.employees[index];
+      if (current.appRole === "director") {
+        const protectedAccount = new Error("Projektovou pozici Vedoucí služby/programu nelze v tomto přehledu měnit.");
+        protectedAccount.status = 403;
+        throw protectedAccount;
+      }
+      const requestedName = req.body.name === undefined ? current.name : normalizeText(req.body.name, 120);
+      if (!requestedName) throw new Error("Jméno pracovníka je povinné.");
+      const next = {
+        ...current,
+        name: requestedName,
+        exportName: req.body.name === undefined ? current.exportName : exportName(requestedName),
+        globalFte: req.body.globalFte === undefined ? current.globalFte : nonnegativeNumber(req.body.globalFte),
+        active: req.body.active === undefined ? current.active : Boolean(req.body.active),
+        updatedAt: now(),
+      };
+      if (Array.isArray(req.body.assignments)) {
+        if (req.body.assignments.some((assignment) => assignment.positionId === "service-manager")) {
+          throw new Error("Pozice Vedoucí služby/programu patří pouze jejímu vlastnímu účtu.");
+        }
+        if (current.appRole === "worker" && req.body.assignments.some((assignment) => assignment.positionId === "expert-guarantor")) {
+          throw new Error("Pozice Odborný garant vyžaduje odpovídající typ účtu.");
+        }
+        const requestedAssignments = current.appRole === "manager" && !req.body.assignments.some((assignment) => assignment.positionId === "expert-guarantor")
+          ? [{ positionId: "expert-guarantor" }, ...req.body.assignments]
+          : req.body.assignments;
+        assertAssignmentsAvailable(db, requestedAssignments, config.POSITIONS, current.id);
+        next.assignments = requestedAssignments.map((assignment) => {
+          const position = config.POSITIONS.find((item) => item.id === assignment.positionId && item.active !== false && item.reportRequired);
+          if (!position) throw new Error(`Neplatná pozice nebo pozice bez pracovního výkazu: ${assignment.positionId}`);
+          return {
+            ...assignment,
+            id: assignment.id || makeId("ASG"),
+            ...(assignment.fte !== undefined ? { fte: nonnegativeNumber(assignment.fte) } : {}),
+            ...(assignment.monthlyHours !== undefined ? { monthlyHours: nonnegativeNumber(assignment.monthlyHours) } : {}),
+          };
+        });
+      }
+      if (req.body.pin) {
+        next.pinHash = hashPin(String(req.body.pin));
+        next.pinMustChange = true;
+      }
+      db.employees[index] = next;
+      addAudit(db, req.auth.employee, "update", "employee", next.id);
+      return { data: db, value: next };
+    });
+    const sync = await syncRecordSafe("employee", employee);
+    res.json({ ...publicEmployee(employee), sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/employees/:id", requireAuth, directorOnly, async (req, res) => {
+  try {
+    const result = await mutateDb(async (db) => {
+      const index = db.employees.findIndex((item) => item.id === req.params.id);
+      if (index < 0) throw new Error("Pracovník nebyl nalezen.");
+      const current = db.employees[index];
+      if (current.appRole === "director" || current.id === req.auth.employee.id) {
+        const protectedAccount = new Error("Účet Vedoucí služby/programu nelze odstranit.");
+        protectedAccount.status = 403;
+        throw protectedAccount;
+      }
+      const next = { ...current, active: false, updatedAt: now() };
+      const hasRecords = db.workReports.some((item) => item.employeeId === current.id)
+        || db.employeeEvaluations.some((item) => item.employeeId === current.id)
+        || db.educationPlans.some((item) => item.employeeId === current.id)
+        || db.educationRecords.some((item) => item.employeeId === current.id)
+        || db.supervisions.some((item) => item.createdBy === current.id || (item.participantIds || []).includes(current.id))
+        || db.meetings.some((item) => item.createdBy === current.id || (item.participantIds || []).includes(current.id));
+      if (hasRecords) db.employees[index] = next;
+      else db.employees.splice(index, 1);
+      addAudit(db, req.auth.employee, "delete", "employee", next.id);
+      return { data: db, value: { employee: next, archived: hasRecords } };
+    });
+    const sync = await syncRecordSafe("employee", result.employee);
+    res.json({ ok: true, archived: result.archived, employee: publicEmployee(result.employee), sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.post("/api/work-reports/submit", requireAuth, async (req, res) => {
+  try {
+    const config = await getConfig();
+    const rules = await getRules();
+    const month = Number(req.body?.month);
+    const year = Number(req.body?.year);
+    const entries = Array.isArray(req.body?.reports) ? req.body.reports : [];
+    if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
+      return res.status(400).json({ error: "Neplatné vykazované období." });
+    }
+    if (!entries.length) return res.status(400).json({ error: "Nebyly předány žádné výkazy." });
+    const start = new Date(config.PROJECT.startDate);
+    const end = new Date(config.PROJECT.endDate);
+    const periodIndex = year * 12 + month;
+    if (periodIndex < start.getFullYear() * 12 + start.getMonth() + 1 || periodIndex > end.getFullYear() * 12 + end.getMonth() + 1) {
+      return res.status(400).json({ error: "Vykazované období je mimo dobu realizace projektu." });
+    }
+    const absenceInput = req.body?.absences || {};
+    const absences = {
+      vacation: Number(absenceInput.vacation || 0),
+      sickLeave: Number(absenceInput.sickLeave || 0),
+      otherObstacles: Number(absenceInput.otherObstacles || 0),
+      otherObstaclesUnit: absenceInput.otherObstaclesUnit === "hours" ? "hours" : "days",
+      doctorVisitHours: Number(absenceInput.doctorVisitHours || 0),
+      holiday: rules.getHolidaysCountForMonth(month, year),
     };
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+    if (Object.entries(absences).some(([key, value]) => key !== "otherObstaclesUnit" && (!Number.isFinite(value) || value < 0))) {
+      return res.status(400).json({ error: "Nepřítomnosti musí být nezáporná čísla." });
+    }
+    const workingDays = rules.getWorkingDays(month, year);
+    const absenceDays = absences.vacation + absences.sickLeave + absences.holiday
+      + (absences.otherObstaclesUnit === "days" ? absences.otherObstacles : 0);
+    if (absenceDays > workingDays + 0.001) {
+      return res.status(400).json({ error: "Součet dnů nepřítomnosti překračuje počet pracovních dnů v měsíci." });
+    }
+    const submissionId = makeId("SUB");
+    const saved = await mutateDb(async (db) => {
+      const employee = db.employees.find((item) => item.id === req.auth.employee.id);
+      const allowedAssignments = new Map((employee.assignments || []).map((item) => [item.id, item]));
+      const assignedFte = (employee.assignments || []).reduce((sum, item) => {
+        const definition = config.POSITIONS.find((position) => position.id === item.positionId);
+        return definition?.active !== false && definition?.reportRequired && definition?.allocationType === "fte"
+          ? sum + Number(item.fte ?? definition.fte ?? 0)
+          : sum;
+      }, 0);
+      const totalFte = Number(employee.globalFte || 0) || assignedFte;
+      const records = entries.map((entry) => {
+        const assignment = allowedAssignments.get(entry.assignmentId);
+        if (!assignment) throw new Error("Výkaz obsahuje pozici, která pracovníkovi není přiřazena.");
+        const position = config.POSITIONS.find((item) => item.id === assignment.positionId && item.reportRequired);
+        if (!position) throw new Error("Pro tuto pozici se měsíční výkaz nevytváří.");
+        const existing = db.workReports.find((item) =>
+          item.employeeId === employee.id && item.assignmentId === assignment.id && item.month === month && item.year === year
+        );
+        const editableStatuses = employee.appRole === "director"
+          ? ["returned", "draft", "ready_for_signature"]
+          : ["returned", "draft"];
+        if (existing && !editableStatuses.includes(existing.status)) {
+          throw new Error(`Výkaz ${position.name} za toto období už byl předán.`);
+        }
+        const activities = Array.isArray(entry.activities)
+          ? entry.activities.slice(0, 10).map((activity) => ({
+              desc: normalizeText(activity?.desc, 2000),
+              hours: Number(activity?.hours || 0),
+            }))
+          : [];
+        if (!activities.length || activities.some((activity) => !activity.desc || !Number.isFinite(activity.hours) || activity.hours < 0)) {
+          throw new Error(`Výkaz ${position.name} musí obsahovat platné činnosti a nezáporné hodiny.`);
+        }
+        const role = {
+          ...position,
+          ...assignment,
+          fte: Number(assignment.fte ?? position.fte ?? 0),
+          monthlyHours: Number(assignment.monthlyHours ?? position.monthlyHours ?? 0),
+        };
+        const metrics = rules.calculateRoleMetrics({ role, positionDef: position, month, year, absences, totalFte });
+        if (metrics.totalAbsenceHours > metrics.maxHoursForRole + 0.011) {
+          throw new Error(`Nepřítomnost ve výkazu ${position.name} překračuje měsíční fond pozice.`);
+        }
+        const requiredWorkedHours = Math.max(0, metrics.maxHoursForRole - metrics.totalAbsenceHours);
+        const workedHours = Math.round(activities.reduce((sum, activity) => sum + activity.hours, 0) * 100) / 100;
+        if (Math.abs(workedHours - requiredWorkedHours) > 0.011) {
+          throw new Error(`Hodiny ve výkazu ${position.name} nesedí. Požadováno ${requiredWorkedHours.toFixed(2)} h, vyplněno ${workedHours.toFixed(2)} h.`);
+        }
+        const timestamp = now();
+        const record = {
+          ...(existing || {}),
+          id: existing?.id || makeId("WR"),
+          submissionId,
+          employeeId: employee.id,
+          employeeName: employee.name,
+          assignmentId: assignment.id,
+          positionId: position.id,
+          positionName: position.name,
+          budgetCode: position.budgetCode,
+          contractType: position.contractType,
+          allocationType: position.allocationType,
+          allocationLabel: position.allocationType === "hours"
+            ? `${assignment.monthlyHours ?? position.monthlyHours} h/měsíc`
+            : `${assignment.fte ?? position.fte} úv.`,
+          fte: Number(assignment.fte ?? position.fte ?? 0),
+          monthlyHours: Number(assignment.monthlyHours ?? position.monthlyHours ?? 0),
+          month,
+          year,
+          absences,
+          activities,
+          workedHours,
+          absenceHours: metrics.totalAbsenceHours,
+          status: employee.appRole === "director" ? "ready_for_signature" : "submitted",
+          managerComment: "",
+          submittedAt: timestamp,
+          updatedAt: timestamp,
+        };
+        if (existing) Object.assign(existing, record);
+        else db.workReports.push(record);
+        addAudit(db, employee, "submit", "workReport", record.id);
+        return record;
+      });
+      return { data: db, value: records };
     });
+    const sync = await Promise.all(saved.map((record) => syncRecordSafe("workReport", record)));
+    res.status(201).json({ submissionId, reports: saved, sync });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
 
-    if (!response.ok) {
-      let details = "";
+app.patch("/api/work-reports/:id/status", requireAuth, reportReviewerOnly, async (req, res) => {
+  const allowed = new Set(["submitted", "returned", "approved", "printed"]);
+  const status = String(req.body?.status || "");
+  const comment = normalizeText(req.body?.comment, 2000);
+  if (!allowed.has(status)) return res.status(400).json({ error: "Neplatný stav výkazu." });
+  if (status === "returned" && !comment) return res.status(400).json({ error: "Při vrácení výkazu je poznámka pro pracovníka povinná." });
+  try {
+    const report = await mutateDb(async (db) => {
+      const item = db.workReports.find((record) => record.id === req.params.id);
+      if (!item) throw new Error("Výkaz nebyl nalezen.");
+      if (!canReviewReport(db, req.auth.employee, item)) {
+        const forbidden = new Error("Tento výkaz nemáte oprávnění kontrolovat.");
+        forbidden.status = 403;
+        throw forbidden;
+      }
+      item.status = status;
+      item.managerComment = comment;
+      item.reviewedBy = req.auth.employee.id;
+      item.reviewedByName = req.auth.employee.name;
+      item.reviewedByRole = req.auth.employee.appRole;
+      item.reviewedAt = now();
+      if (status === "approved") {
+        item.approvedAt = item.reviewedAt;
+        item.approvedBy = req.auth.employee.id;
+        item.approvedByName = req.auth.employee.name;
+        item.approvedByRole = req.auth.employee.appRole;
+      }
+      item.updatedAt = now();
+      addAudit(db, req.auth.employee, "status", "workReport", item.id, { status });
+      return { data: db, value: item };
+    });
+    const sync = await syncRecordSafe("workReport", report);
+    res.json({ report, sync });
+  } catch (error) {
+    res.status(error.status || 404).json({ error: error.message });
+  }
+});
 
-      try {
-        const errorPayload = await response.json();
-        details = errorPayload?.error?.message || JSON.stringify(errorPayload);
-      } catch {
-        details = await response.text();
+app.delete("/api/work-reports/:id", requireAuth, directorOnly, deleteSimpleRecordHandler({
+  collection: "workReports", type: "workReport", label: "Výkaz",
+}));
+
+app.get("/api/work-reports/:id/signed-file", requireAuth, async (req, res) => {
+  try {
+    const db = await readDb();
+    const report = db.workReports.find((item) => item.id === req.params.id);
+    if (!report) return res.status(404).json({ error: "Výkaz nebyl nalezen." });
+    const canPreview = report.employeeId === req.auth.employee.id
+      || req.auth.employee.appRole === "director"
+      || canReviewReport(db, req.auth.employee, report);
+    if (!canPreview) return res.status(403).json({ error: "Tento podepsaný výkaz nemáte oprávnění zobrazit." });
+
+    let buffer;
+    if (report.driveFileId) {
+      buffer = await googleWorkspace.downloadFile(report.driveFileId);
+    } else if (report.localFilePath) {
+      const dataRoot = path.resolve(path.dirname(DB_PATH));
+      const filePath = path.resolve(report.localFilePath);
+      if (filePath !== dataRoot && !filePath.startsWith(`${dataRoot}${path.sep}`)) {
+        return res.status(403).json({ error: "Uložený soubor je mimo datovou složku aplikace." });
+      }
+      buffer = await fs.readFile(filePath);
+    } else {
+      return res.status(404).json({ error: "K tomuto výkazu zatím není uložené podepsané PDF." });
+    }
+
+    const fileName = exportName(`Vykaz_${report.employeeName}_${report.positionName}_${report.year}_${report.month}`) || "Pracovni_vykaz";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${fileName}.pdf"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    return res.send(buffer);
+  } catch (error) {
+    return res.status(502).json({ error: "Náhled podepsaného výkazu se nepodařilo načíst.", details: error.message });
+  }
+});
+
+app.put("/api/employee-evaluations/:year", requireAuth, leaderOnly, async (req, res) => {
+  try {
+    const year = Number(req.params.year);
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error("Neplatný rok hodnocení.");
+    const targetEmployeeId = req.body.employeeId;
+    const evaluation = await mutateDb(async (db) => {
+      const target = db.employees.find((item) => item.id === targetEmployeeId);
+      if (!target) throw new Error("Pracovník nebyl nalezen.");
+      if (!canManageEmployeeEvaluation(req.auth.employee, target)) {
+        const denied = new Error("Tohoto pracovníka nemáte oprávnění hodnotit.");
+        denied.status = 403;
+        throw denied;
+      }
+      let item = db.employeeEvaluations.find((record) => record.employeeId === target.id && record.year === year);
+      const linkedPlan = db.educationPlans.find((plan) => plan.employeeId === target.id && plan.year === year);
+      if (item?.status === "closed" && linkedPlan?.status === "approved" && req.auth.employee.appRole !== "director") {
+        const locked = new Error("Hodnocení je uzamčené schváleným vzdělávacím plánem. Odemknout je může Vedoucí služby/programu.");
+        locked.status = 409;
+        throw locked;
+      }
+      const status = req.body.status === "closed" ? "closed" : "draft";
+      const professionalGoals = Array.isArray(req.body.professionalGoals)
+        ? req.body.professionalGoals.slice(0, 3).map((goal) => ({
+            id: normalizeText(goal?.id, 150) || makeId("EVG"),
+            text: normalizeText(goal?.text, 1000),
+            successCriterion: normalizeText(goal?.successCriterion, 1000),
+          })).filter((goal) => goal.text || goal.successCriterion)
+        : [];
+      const timestamp = now();
+      const next = {
+        ...(item || {}),
+        id: item?.id || makeId("EVE"), employeeId: target.id, employeeName: target.name, year,
+        evaluationDate: normalizeText(req.body.evaluationDate, 20),
+        previousGoalsEvaluation: normalizeText(req.body.previousGoalsEvaluation, 10000),
+        strengths: normalizeText(req.body.strengths, 10000),
+        developmentNeeds: normalizeText(req.body.developmentNeeds, 10000),
+        professionalGoals,
+        evaluatorId: req.auth.employee.id,
+        evaluatorName: req.auth.employee.name,
+        evaluatorRole: req.auth.employee.appRole,
+        status,
+        closedAt: status === "closed" ? (item?.closedAt || timestamp) : "",
+        educationPlanId: linkedPlan?.id || item?.educationPlanId || "",
+        createdAt: item?.createdAt || timestamp,
+        updatedAt: timestamp,
+      };
+      if (status === "closed") {
+        if (!next.evaluationDate || !next.strengths || !next.developmentNeeds || !next.professionalGoals.length) {
+          throw new Error("Před uzavřením vyplňte datum, silné stránky, rozvojové potřeby a alespoň jeden profesní cíl.");
+        }
+        if (next.professionalGoals.some((goal) => !goal.text || !goal.successCriterion)) {
+          throw new Error("U každého profesního cíle vyplňte také způsob, jak poznáte jeho splnění.");
+        }
+      }
+      if (item) Object.assign(item, next); else { item = next; db.employeeEvaluations.push(item); }
+      addAudit(db, req.auth.employee, "upsert", "employeeEvaluation", item.id, { status: item.status });
+      return { data: db, value: item };
+    });
+    const sync = await syncRecordSafe("employeeEvaluation", evaluation);
+    res.json({ evaluation, sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/employee-evaluations/:id", requireAuth, directorOnly, async (req, res) => {
+  try {
+    const result = await mutateDb(async (db) => {
+      const index = db.employeeEvaluations.findIndex((item) => item.id === req.params.id);
+      if (index < 0) {
+        const missing = new Error("Hodnocení nebylo nalezeno.");
+        missing.status = 404;
+        throw missing;
+      }
+      const [evaluation] = db.employeeEvaluations.splice(index, 1);
+      const linkedPlans = db.educationPlans.filter((plan) => plan.employeeEvaluationId === evaluation.id);
+      for (const plan of linkedPlans) {
+        plan.employeeEvaluationId = "";
+        plan.updatedAt = now();
+      }
+      addAudit(db, req.auth.employee, "delete", "employeeEvaluation", evaluation.id);
+      return { data: db, value: { evaluation, linkedPlans } };
+    });
+    const [sheet, planSync] = await Promise.all([
+      deleteRecordSafe("employeeEvaluation", result.evaluation.id),
+      Promise.all(result.linkedPlans.map((plan) => syncRecordSafe("educationPlan", plan))),
+    ]);
+    res.json({ deleted: true, id: result.evaluation.id, sheet, planSync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.put("/api/education-plans/:year", requireAuth, leaderOnly, async (req, res) => {
+  try {
+    const year = Number(req.params.year);
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error("Neplatný rok plánu.");
+    const targetEmployeeId = req.body.employeeId || req.auth.employee.id;
+    const config = await getConfig();
+    const result = await mutateDb(async (db) => {
+      const employee = db.employees.find((item) => item.id === targetEmployeeId);
+      if (!employee) throw new Error("Pracovník nebyl nalezen.");
+      if (!canManageEducationPlan(req.auth.employee, employee)) {
+        const denied = new Error("Tento vzdělávací plán nemůžete upravovat.");
+        denied.status = 403;
+        throw denied;
+      }
+      let item = db.educationPlans.find((record) => record.employeeId === employee.id && record.year === year);
+      const employeeEvaluation = db.employeeEvaluations.find((record) => record.employeeId === employee.id && record.year === year && record.status === "closed");
+      const timestamp = now();
+      const requestedStatus = String(req.body.status || "draft");
+      const allowedStatuses = allowedEducationPlanStatuses(req.auth.employee, employee);
+      if (!allowedStatuses.has(requestedStatus)) {
+        const denied = new Error(employee.id === req.auth.employee.id && employee.appRole === "manager"
+          ? "Vlastní plán Odborného garanta schvaluje Vedoucí služby/programu."
+          : "Pro tento účet není požadovaný stav plánu povolen.");
+        denied.status = 403;
+        throw denied;
+      }
+      const positionNames = (employee.assignments || [])
+        .map((assignment) => config.POSITIONS.find((position) => position.id === assignment.positionId)?.name)
+        .filter(Boolean);
+      const supervisor = employee.appRole === "worker"
+        ? db.employees.find((candidate) => candidate.active !== false && candidate.appRole === "manager")
+        : employee.appRole === "manager"
+          ? db.employees.find((candidate) => candidate.active !== false && candidate.appRole === "director")
+          : null;
+      const allowedNeedSources = new Set([
+        "job_requirements", "client_needs", "legislation_methodology", "employee_evaluation",
+        "supervisor_recommendation", "own_interest", "other",
+      ]);
+      const allowedFormats = new Set(["course", "seminar", "conference", "e_learning", "internship", "other"]);
+      const allowedActivityStatuses = new Set(["planned", "completed"]);
+      const next = {
+        ...(item || {}),
+        id: item?.id || makeId("EDP"), employeeId: employee.id, employeeName: employee.name, year,
+        employeeEvaluationId: employeeEvaluation?.id || item?.employeeEvaluationId || "",
+        positionNames, serviceName: config.PROJECT.name,
+        supervisorId: supervisor?.id || "", supervisorName: supervisor?.name || "",
+        planDate: normalizeText(req.body.planDate, 20),
+        goals: normalizeText(req.body.goals, 10000), needs: normalizeText(req.body.needs, 10000),
+        needSources: Array.isArray(req.body.needSources)
+          ? [...new Set(req.body.needSources.map((source) => String(source)).filter((source) => allowedNeedSources.has(source)))]
+          : [],
+        otherNeedSource: normalizeText(req.body.otherNeedSource, 500),
+        plannedActivities: Array.isArray(req.body.plannedActivities)
+          ? req.body.plannedActivities.slice(0, 50).map((activity) => ({
+              id: normalizeText(activity?.id, 150) || makeId("EDA"),
+              topic: normalizeText(typeof activity === "string" ? activity : activity?.topic || activity?.title, 500),
+              title: normalizeText(typeof activity === "string" ? activity : activity?.topic || activity?.title, 500),
+              accreditationNumber: normalizeText(activity?.accreditationNumber, 300),
+              format: allowedFormats.has(activity?.format) ? activity.format : "course",
+              plannedDate: normalizeText(activity?.plannedDate, 30),
+              hours: nonnegativeNumber(activity?.hours, 0),
+              estimatedCost: nonnegativeNumber(activity?.estimatedCost, 0),
+              status: allowedActivityStatuses.has(activity?.status) ? activity.status : "planned",
+            })).filter((activity) => activity.topic)
+          : [],
+        professionalDevelopment: "",
+        evaluation: normalizeText(req.body.evaluation, 10000),
+        evaluationNotCompleted: normalizeText(req.body.evaluationNotCompleted, 10000),
+        nextYearUpdate: normalizeText(req.body.nextYearUpdate, 10000),
+        evaluationDate: normalizeText(req.body.evaluationDate, 20),
+        status: requestedStatus,
+        updatedAt: timestamp, createdAt: item?.createdAt || timestamp,
+      };
+      const activityIds = next.plannedActivities.map((activity) => activity.id);
+      if (new Set(activityIds).size !== activityIds.length) throw new Error("Položky vzdělávacího plánu nejsou jednoznačné. Obnovte stránku a zkuste to znovu.");
+      const removedLinkedActivity = db.educationRecords.find((record) => record.employeeId === employee.id && record.plannedActivityId && !activityIds.includes(record.plannedActivityId));
+      if (removedLinkedActivity) throw new Error(`Položku plánu nelze odstranit, protože je propojena se vzděláváním „${removedLinkedActivity.title}“. Nejprve záznam odpojte.`);
+      for (const activity of next.plannedActivities) {
+        if (db.educationRecords.some((record) => record.plannedActivityId === activity.id)) activity.status = "completed";
+      }
+      if (requestedStatus !== "draft") {
+        if (employee.appRole !== "director" && !employeeEvaluation) {
+          throw new Error("Před schválením nebo předáním plánu nejprve uzavřete hodnocení zaměstnance za stejný rok.");
+        }
+        if (!next.planDate || !next.goals || !next.needSources.length || !next.plannedActivities.length) {
+          throw new Error("Před schválením nebo předáním vyplňte datum sestavení, rozvojové potřeby, jejich zdroj a alespoň jednu plánovanou aktivitu.");
+        }
+        if (next.plannedActivities.some((activity) => !activity.plannedDate || activity.hours <= 0)) {
+          throw new Error("U každé plánované aktivity vyplňte předpokládané čtvrtletí a rozsah hodin.");
+        }
+      }
+      if (requestedStatus === "approved") {
+        next.approvedAt = timestamp;
+        next.approvedBy = req.auth.employee.id;
+        next.approvedByName = req.auth.employee.name;
+        next.approvedByRole = req.auth.employee.appRole;
+      } else {
+        next.approvedAt = "";
+        next.approvedBy = "";
+        next.approvedByName = "";
+        next.approvedByRole = "";
+      }
+      if (requestedStatus === "submitted") {
+        next.submittedAt = timestamp;
+        next.submittedBy = req.auth.employee.id;
+      } else if (requestedStatus === "draft") {
+        next.submittedAt = "";
+        next.submittedBy = "";
+      }
+      if (item) Object.assign(item, next); else { item = next; db.educationPlans.push(item); }
+      if (employeeEvaluation) {
+        employeeEvaluation.educationPlanId = item.id;
+        employeeEvaluation.updatedAt = timestamp;
+      }
+      addAudit(db, req.auth.employee, "upsert", "educationPlan", item.id, { status: item.status });
+      return { data: db, value: { plan: item, employeeEvaluation } };
+    });
+    const [sync, evaluationSync] = await Promise.all([
+      syncRecordSafe("educationPlan", result.plan),
+      result.employeeEvaluation ? syncRecordSafe("employeeEvaluation", result.employeeEvaluation) : Promise.resolve(null),
+    ]);
+    res.json({ plan: result.plan, sync, evaluationSync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/education-plans/:id", requireAuth, directorOnly, async (req, res) => {
+  try {
+    const result = await mutateDb(async (db) => {
+      const index = db.educationPlans.findIndex((item) => item.id === req.params.id);
+      if (index < 0) {
+        const missing = new Error("Vzdělávací plán nebyl nalezen.");
+        missing.status = 404;
+        throw missing;
+      }
+      const [plan] = db.educationPlans.splice(index, 1);
+      const unlinkedRecords = db.educationRecords.filter((record) => record.educationPlanId === plan.id);
+      for (const record of unlinkedRecords) {
+        record.educationPlanId = "";
+        record.plannedActivityId = "";
+        record.plannedActivityTitle = "";
+        record.updatedAt = now();
+      }
+      addAudit(db, req.auth.employee, "delete", "educationPlan", plan.id, { unlinkedEducationRecords: unlinkedRecords.length });
+      return { data: db, value: { plan, unlinkedRecords } };
+    });
+    const [sheet, recordSync] = await Promise.all([
+      deleteRecordSafe("educationPlan", result.plan.id),
+      Promise.all(result.unlinkedRecords.map((record) => syncRecordSafe("educationRecord", record))),
+    ]);
+    res.json({ deleted: true, id: result.plan.id, unlinkedEducationRecords: result.unlinkedRecords.length, sheet, recordSync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.post("/api/education-records", requireAuth, leaderOnly, upload.single("certificate"), async (req, res) => {
+  try {
+    const { calculateInclusiveEducationHours } = await getTimeRange();
+    const leader = ["manager", "director"].includes(req.auth.employee.appRole);
+    const targetEmployeeId = leader && req.body.employeeId ? req.body.employeeId : req.auth.employee.id;
+    let certificate = null;
+    if (req.file) {
+      if (req.file.size > 15 * 1024 * 1024) throw new Error("Osvědčení může mít nejvýše 15 MB.");
+      const extension = path.extname(req.file.originalname).toLowerCase();
+      const allowedTypes = {
+        ".pdf": "application/pdf",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+      };
+      if (!allowedTypes[extension]) throw new Error("Osvědčení nahrajte jako PDF, JPG nebo PNG.");
+      certificate = {
+        buffer: req.file.buffer,
+        extension,
+        mimeType: allowedTypes[extension],
+        originalName: normalizeText(req.file.originalname, 300),
+        hash: fileHash(req.file.buffer),
+      };
+    }
+    const result = await mutateDb(async (db) => {
+      const employee = db.employees.find((item) => item.id === targetEmployeeId);
+      if (!employee) throw new Error("Pracovník nebyl nalezen.");
+      if (!canManageEducationPlan(req.auth.employee, employee)) {
+        const denied = new Error("Vzdělávání tohoto pracovníka nemůžete upravovat.");
+        denied.status = 403;
+        throw denied;
+      }
+      const dateFrom = normalizeText(req.body.dateFrom, 20);
+      const dateTo = normalizeText(req.body.dateTo, 20);
+      const timeFrom = normalizeText(req.body.timeFrom, 10);
+      const timeTo = normalizeText(req.body.timeTo, 10);
+      const hours = calculateInclusiveEducationHours({ dateFrom, dateTo, timeFrom, timeTo });
+      const plannedActivityId = normalizeText(req.body.plannedActivityId, 150);
+      const educationPlan = plannedActivityId
+        ? db.educationPlans.find((plan) => plan.employeeId === employee.id && plan.year === Number(dateFrom.slice(0, 4)) && (plan.plannedActivities || []).some((activity) => activity.id === plannedActivityId))
+        : null;
+      const plannedActivity = educationPlan?.plannedActivities.find((activity) => activity.id === plannedActivityId);
+      if (plannedActivityId && !plannedActivity) throw new Error("Vybraná položka vzdělávacího plánu nebyla nalezena pro daného pracovníka a rok.");
+      const title = normalizeText(req.body.title, 300);
+      if (!dateFrom || !dateTo || !timeFrom || !timeTo || !title || hours <= 0) {
+        throw new Error("Vyplňte datum od–do, čas od–do a název vzdělávání. Čas konce musí být později než začátek.");
+      }
+      if (certificate) {
+        const duplicate = findDuplicateByFileHash(db.educationRecords, certificate.hash);
+        if (duplicate) {
+          const conflict = new Error(`Toto osvědčení už bylo nahráno u vzdělávání „${duplicate.title}“ pracovníka ${duplicate.employeeName}.`);
+          conflict.status = 409;
+          throw conflict;
+        }
+      }
+      let uploaded = { uploaded: false, reason: "no-file" };
+      let localFilePath = "";
+      if (certificate) {
+        const driveName = `${dateFrom}__${safeName(employee.name)}__${safeName(title)}__osvedceni${certificate.extension}`;
+        uploaded = await googleWorkspace.uploadFile({
+          name: driveName,
+          mimeType: certificate.mimeType,
+          buffer: certificate.buffer,
+          pathSegments: [String(dateFrom.slice(0, 4)), "Vzdelavani", employee.name],
+        });
+        if (!uploaded.uploaded) {
+          const directory = path.join(path.dirname(DB_PATH), "education-certificates", String(dateFrom.slice(0, 4)));
+          await fs.mkdir(directory, { recursive: true });
+          localFilePath = path.join(directory, `${makeId("CERT")}${certificate.extension}`);
+          await fs.writeFile(localFilePath, certificate.buffer);
+        }
+      }
+      const item = {
+        id: makeId("EDU"), employeeId: employee.id, employeeName: employee.name,
+        date: dateFrom, dateFrom, dateTo, timeFrom, timeTo, title,
+        provider: normalizeText(req.body.provider, 300), format: req.body.format === "Online" ? "Online" : "Prezenční",
+        hours, accreditation: normalizeText(req.body.accreditation, 200),
+        certificateFileName: certificate?.originalName || "",
+        certificateMimeType: certificate?.mimeType || "",
+        fileHash: certificate?.hash || "",
+        driveFileId: uploaded.id || "",
+        driveFileUrl: uploaded.webViewLink || "",
+        localFilePath,
+        createdAt: now(),
+        educationPlanId: educationPlan?.id || "", plannedActivityId: plannedActivity?.id || "",
+        plannedActivityTitle: plannedActivity?.topic || plannedActivity?.title || "",
+      };
+      db.educationRecords.push(item);
+      if (plannedActivity) {
+        plannedActivity.status = "completed";
+        educationPlan.updatedAt = now();
+      }
+      addAudit(db, req.auth.employee, "create", "educationRecord", item.id);
+      return { data: db, value: { record: item, plan: educationPlan } };
+    });
+    const sync = await syncRecordSafe("educationRecord", result.record);
+    const planSync = result.plan ? await syncRecordSafe("educationPlan", result.plan) : null;
+    res.status(201).json({ record: result.record, sync, planSync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.get("/api/education-records/:id/certificate", requireAuth, async (req, res) => {
+  try {
+    const db = await readDb();
+    const record = db.educationRecords.find((item) => item.id === req.params.id);
+    if (!record) return res.status(404).json({ error: "Záznam vzdělávání nebyl nalezen." });
+    const employee = db.employees.find((item) => item.id === record.employeeId);
+    const canPreview = record.employeeId === req.auth.employee.id
+      || req.auth.employee.appRole === "director"
+      || canManageEducationPlan(req.auth.employee, employee);
+    if (!canPreview) return res.status(403).json({ error: "Toto osvědčení nemáte oprávnění zobrazit." });
+
+    let buffer;
+    if (record.driveFileId) {
+      buffer = await googleWorkspace.downloadFile(record.driveFileId);
+    } else if (record.localFilePath) {
+      const dataRoot = path.resolve(path.dirname(DB_PATH));
+      const filePath = path.resolve(record.localFilePath);
+      if (filePath !== dataRoot && !filePath.startsWith(`${dataRoot}${path.sep}`)) {
+        return res.status(403).json({ error: "Uložený soubor je mimo datovou složku aplikace." });
+      }
+      buffer = await fs.readFile(filePath);
+    } else {
+      return res.status(404).json({ error: "K tomuto vzdělávání není nahrané osvědčení." });
+    }
+
+    const fallbackExtension = record.certificateMimeType === "application/pdf" ? ".pdf" : record.certificateMimeType === "image/png" ? ".png" : ".jpg";
+    const fileName = exportName(path.parse(record.certificateFileName || "osvedceni").name) || "osvedceni";
+    res.setHeader("Content-Type", record.certificateMimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${fileName}${path.extname(record.certificateFileName || "") || fallbackExtension}"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    return res.send(buffer);
+  } catch (error) {
+    return res.status(502).json({ error: "Osvědčení se nepodařilo načíst.", details: error.message });
+  }
+});
+
+app.patch("/api/education-records/:id/link", requireAuth, leaderOnly, async (req, res) => {
+  try {
+    const plannedActivityId = normalizeText(req.body.plannedActivityId, 150);
+    const result = await mutateDb(async (db) => {
+      const record = db.educationRecords.find((item) => item.id === req.params.id);
+      if (!record) {
+        const missing = new Error("Záznam vzdělávání nebyl nalezen.");
+        missing.status = 404;
+        throw missing;
+      }
+      const employee = db.employees.find((item) => item.id === record.employeeId);
+      if (!canManageEducationPlan(req.auth.employee, employee)) {
+        const denied = new Error("Vzdělávání tohoto pracovníka nemůžete upravovat.");
+        denied.status = 403;
+        throw denied;
+      }
+      const year = Number(String(record.dateFrom || record.date || "").slice(0, 4));
+      const oldPlan = db.educationPlans.find((plan) => plan.id === record.educationPlanId);
+      const oldActivityId = record.plannedActivityId || "";
+      const nextPlan = plannedActivityId
+        ? db.educationPlans.find((plan) => plan.employeeId === record.employeeId && plan.year === year && (plan.plannedActivities || []).some((activity) => activity.id === plannedActivityId))
+        : null;
+      const nextActivity = nextPlan?.plannedActivities.find((activity) => activity.id === plannedActivityId);
+      if (plannedActivityId && !nextActivity) throw new Error("Vybraná položka plánu nepatří tomuto pracovníkovi nebo roku vzdělávání.");
+      record.educationPlanId = nextPlan?.id || "";
+      record.plannedActivityId = nextActivity?.id || "";
+      record.plannedActivityTitle = nextActivity?.topic || nextActivity?.title || "";
+      record.updatedAt = now();
+      const touchedPlans = [...new Set([oldPlan, nextPlan].filter(Boolean))];
+      for (const plan of touchedPlans) {
+        for (const activity of plan.plannedActivities || []) {
+          if (![oldActivityId, plannedActivityId].includes(activity.id)) continue;
+          activity.status = db.educationRecords.some((item) => item.plannedActivityId === activity.id) ? "completed" : "planned";
+        }
+        plan.updatedAt = now();
+      }
+      addAudit(db, req.auth.employee, "link", "educationRecord", record.id, { plannedActivityId });
+      return { data: db, value: { record, plans: touchedPlans } };
+    });
+    const sync = await syncRecordSafe("educationRecord", result.record);
+    const planSync = await Promise.all(result.plans.map((plan) => syncRecordSafe("educationPlan", plan)));
+    res.json({ record: result.record, sync, planSync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/education-records/:id", requireAuth, directorOnly, async (req, res) => {
+  try {
+    const result = await mutateDb(async (db) => {
+      const index = db.educationRecords.findIndex((item) => item.id === req.params.id);
+      if (index < 0) {
+        const missing = new Error("Záznam vzdělávání nebyl nalezen.");
+        missing.status = 404;
+        throw missing;
+      }
+      const [record] = db.educationRecords.splice(index, 1);
+      const plan = record.educationPlanId
+        ? db.educationPlans.find((item) => item.id === record.educationPlanId)
+        : null;
+      if (plan && record.plannedActivityId) {
+        const activity = (plan.plannedActivities || []).find((item) => item.id === record.plannedActivityId);
+        if (activity) {
+          activity.status = db.educationRecords.some((item) => item.plannedActivityId === activity.id) ? "completed" : "planned";
+          plan.updatedAt = now();
+        }
+      }
+      addAudit(db, req.auth.employee, "delete", "educationRecord", record.id, { educationPlanId: record.educationPlanId || "" });
+      return { data: db, value: { record, plan } };
+    });
+    const [sheet, drive, planSync] = await Promise.all([
+      deleteRecordSafe("educationRecord", result.record.id),
+      trashFileSafe(result.record.driveFileId),
+      result.plan ? syncRecordSafe("educationPlan", result.plan) : Promise.resolve(null),
+    ]);
+    res.json({ deleted: true, id: result.record.id, sheet, drive, planSync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.post("/api/supervisions", requireAuth, leaderOnly, async (req, res) => {
+  try {
+    const { calculateTimeRangeHours } = await getTimeRange();
+    const record = await mutateDb(async (db) => {
+      const requestedIds = Array.isArray(req.body.participantIds) ? req.body.participantIds : [];
+      const participantIds = ["manager", "director"].includes(req.auth.employee.appRole) ? requestedIds : [req.auth.employee.id];
+      const participants = db.employees.filter((item) => participantIds.includes(item.id));
+      const timeFrom = normalizeText(req.body.timeFrom, 10);
+      const timeTo = normalizeText(req.body.timeTo, 10);
+      const hours = calculateTimeRangeHours(timeFrom, timeTo);
+      const item = {
+        id: makeId("SUP"), date: normalizeText(req.body.date, 20),
+        type: ["individual", "team"].includes(req.body.type) ? req.body.type : "team",
+        supervisor: normalizeText(req.body.supervisor, 200), timeFrom, timeTo, hours,
+        participantIds: participants.map((item) => item.id), participantNames: participants.map((item) => item.name),
+        createdBy: req.auth.employee.id, createdByName: req.auth.employee.name, createdAt: now(),
+      };
+      if (!item.date || !item.supervisor || !item.timeFrom || !item.timeTo || item.hours <= 0 || !item.participantIds.length) {
+        throw new Error("Vyplňte datum, čas od–do, supervizora a účastníky. Čas konce musí být později než začátek.");
+      }
+      db.supervisions.push(item);
+      addAudit(db, req.auth.employee, "create", "supervision", item.id);
+      return { data: db, value: item };
+    });
+    const sync = await syncRecordSafe("supervision", record);
+    res.status(201).json({ record, sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/supervisions/:id", requireAuth, directorOnly, deleteSimpleRecordHandler({
+  collection: "supervisions", type: "supervision", label: "Záznam supervize",
+}));
+
+app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
+  try {
+    const meeting = await mutateDb(async (db) => {
+      const participants = db.employees.filter((item) => (req.body.participantIds || []).includes(item.id));
+      const item = {
+        id: makeId("MTG"), date: normalizeText(req.body.date, 20), title: "Porada",
+        location: "", participantIds: participants.map((item) => item.id),
+        participantNames: participants.map((item) => item.name), agenda: "",
+        notes: normalizeText(req.body.content || req.body.notes, 40000), decisions: "",
+        tasks: Array.isArray(req.body.tasks) ? req.body.tasks.slice(0, 100).map((task) => ({
+          text: normalizeText(task?.text, 1000),
+          owner: normalizeText(task?.owner, 200),
+          deadline: normalizeText(task?.deadline, 50),
+        })).filter((task) => task.text) : [],
+        status: req.body.status === "submitted" ? "submitted" : "draft",
+        createdBy: req.auth.employee.id, createdByName: req.auth.employee.name,
+        createdAt: now(), updatedAt: now(),
+      };
+      if (!item.date || !item.notes) throw new Error("Datum a zápis z porady jsou povinné.");
+      db.meetings.push(item);
+      addAudit(db, req.auth.employee, "create", "meeting", item.id);
+      return { data: db, value: item };
+    });
+    const sync = await syncRecordSafe("meeting", meeting);
+    res.status(201).json({ meeting, sync });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
+  try {
+    const meeting = await mutateDb(async (db) => {
+      const item = db.meetings.find((entry) => entry.id === req.params.id);
+      if (!item) {
+        const missing = new Error("Porada nebyla nalezena.");
+        missing.status = 404;
+        throw missing;
+      }
+      if (item.status === "archived" && req.auth.employee.appRole !== "director") {
+        const archived = new Error("Hotový zápis smí zpětně upravit pouze Vedoucí služby/programu.");
+        archived.status = 403;
+        throw archived;
+      }
+      if (req.auth.employee.appRole !== "director" && item.createdBy !== req.auth.employee.id) {
+        const forbidden = new Error("Tento koncept může upravit pouze jeho autor nebo Vedoucí služby/programu.");
+        forbidden.status = 403;
+        throw forbidden;
       }
 
-      return res.status(response.status).json({
-        error: "Gemini API chyba.",
-        details
-      });
-    }
+      const participants = db.employees.filter((employee) => (req.body.participantIds || []).includes(employee.id));
+      const date = normalizeText(req.body.date, 20);
+      const notes = normalizeText(req.body.content || req.body.notes, 40000);
+      if (!date || !notes) throw new Error("Datum a zápis z porady jsou povinné.");
 
-    const data = await response.json();
-    const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!textResult) {
-      return res.status(500).json({
-        error: "Neplatná odpověď z Gemini API."
-      });
-    }
-
-    let parsedResult;
-
-    try {
-      parsedResult = JSON.parse(textResult);
-    } catch {
-      return res.status(500).json({
-        error: "Gemini API nevrátilo platný JSON.",
-        raw: textResult
-      });
-    }
-
-    return res.json(parsedResult);
-  } catch (error) {
-    console.error("POST /api/ai/generate failed:", error);
-    return res.status(500).json({
-      error: "AI požadavek selhal.",
-      details: error.message
+      item.date = date;
+      item.participantIds = participants.map((employee) => employee.id);
+      item.participantNames = participants.map((employee) => employee.name);
+      item.notes = notes;
+      item.tasks = Array.isArray(req.body.tasks) ? req.body.tasks.slice(0, 100).map((task) => ({
+        text: normalizeText(task?.text, 1000),
+        owner: normalizeText(task?.owner, 200),
+        deadline: normalizeText(task?.deadline, 50),
+      })).filter((task) => task.text) : [];
+      item.status = req.body.status === "submitted" ? "submitted" : "draft";
+      item.updatedAt = now();
+      addAudit(db, req.auth.employee, "update", "meeting", item.id);
+      return { data: db, value: item };
     });
+    const sync = await syncRecordSafe("meeting", meeting);
+    res.json({ meeting, sync });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/meetings/:id", requireAuth, directorOnly, deleteSimpleRecordHandler({
+  collection: "meetings", type: "meeting", label: "Zápis z porady",
+}));
+
+app.post("/api/ai/meeting-minutes", requireAuth, leaderOnly, async (req, res) => {
+  try {
+    const result = await callGemini({
+      promptText: `Datum porady: ${normalizeText(req.body.date, 30)}\nNeuspořádaný text porady:\n${normalizeText(req.body.content || req.body.notes, 40000)}`,
+      systemInstruction: "Jsi přesný zapisovatel pracovních porad. Z dodaného textu vytvoř přehledný, věcný zápis v češtině a samostatně vytěž úkoly. V zápisu zachovej důležité body, rozhodnutí a závěry. U úkolů uveď odpovědnou osobu a termín pouze tehdy, jsou-li ve vstupu uvedeny. Nevymýšlej fakta, jména ani termíny; nejasnosti uveď ke kontrole.",
+      responseSchema: {
+        type: "OBJECT",
+        properties: {
+          minutes: { type: "STRING" },
+          tasks: { type: "ARRAY", items: { type: "OBJECT", properties: { text: { type: "STRING" }, owner: { type: "STRING" }, deadline: { type: "STRING" } }, required: ["text", "owner", "deadline"] } },
+          reviewNotes: { type: "ARRAY", items: { type: "STRING" } },
+        },
+        required: ["minutes", "tasks", "reviewNotes"],
+      },
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({ error: "Návrh zápisu se nepodařilo vytvořit.", details: error.message });
+  }
+});
+
+app.post("/api/ai/meeting-import", requireAuth, leaderOnly, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Vyberte soubor se zápisem." });
+    if (req.file.size > 18 * 1024 * 1024) return res.status(400).json({ error: "Soubor může mít nejvýše 18 MB." });
+    const extension = path.extname(req.file.originalname).toLowerCase();
+    const inlineMimeTypes = {
+      ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg", ".webp": "image/webp",
+    };
+    let documentText = "";
+    let inlineData = null;
+    if (extension === ".docx") {
+      const mammoth = require("mammoth");
+      const extracted = await mammoth.extractRawText({ buffer: req.file.buffer });
+      documentText = normalizeText(extracted.value, 60000);
+    } else if (extension === ".txt") {
+      documentText = normalizeText(req.file.buffer.toString("utf8"), 60000);
+    } else if (inlineMimeTypes[extension]) {
+      inlineData = { mimeType: inlineMimeTypes[extension], data: req.file.buffer.toString("base64") };
+    } else {
+      return res.status(400).json({ error: "Podporovány jsou soubory PDF, DOCX, TXT, PNG, JPG a WEBP." });
+    }
+    if (!inlineData && !documentText) return res.status(400).json({ error: "V dokumentu se nepodařilo najít čitelný text." });
+
+    const result = await callGemini({
+      model: process.env.GEMINI_DOCUMENT_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      promptText: `Převeď přiložený zápis z porady do strukturovaných polí aplikace. Název souboru: ${normalizeText(req.file.originalname, 300)}.${documentText ? `\n\nText dokumentu:\n${documentText}` : ""}`,
+      inlineData,
+      systemInstruction: "Jsi přesný přepisovatel zápisů pracovních porad. Z dokumentu vytěž pouze výslovně uvedené údaje. Nic nevymýšlej. Datum vrať jako RRRR-MM-DD, chybějící údaje ponech prázdné a nejasnosti uveď ke kontrole. Zápis zachovej věcně a bez zbytečného zkrácení.",
+      responseSchema: {
+        type: "OBJECT",
+        properties: {
+          date: { type: "STRING" },
+          participantNames: { type: "ARRAY", items: { type: "STRING" } },
+          minutes: { type: "STRING" },
+          tasks: { type: "ARRAY", items: { type: "OBJECT", properties: { text: { type: "STRING" }, owner: { type: "STRING" }, deadline: { type: "STRING" } }, required: ["text", "owner", "deadline"] } },
+          reviewNotes: { type: "ARRAY", items: { type: "STRING" } },
+        },
+        required: ["date", "participantNames", "minutes", "tasks", "reviewNotes"],
+      },
+    });
+    const db = await readDb();
+    const normalizedNames = (result.participantNames || []).map((name) => slugify(name).replace(/^(mgr|bc|ing|mudr|phdr|judr|doc|prof)-/, ""));
+    const matchedParticipants = db.employees.filter((employee) => {
+      const employeeName = slugify(employee.name).replace(/^(mgr|bc|ing|mudr|phdr|judr|doc|prof)-/, "");
+      return employee.active !== false && normalizedNames.some((name) => name === employeeName || name.endsWith(employeeName) || employeeName.endsWith(name));
+    });
+    res.json({
+      ...result,
+      participantIds: matchedParticipants.map((employee) => employee.id),
+      matchedParticipantNames: matchedParticipants.map((employee) => employee.name),
+      sourceFileName: req.file.originalname,
+    });
+  } catch (error) {
+    res.status(502).json({ error: "Zápis se nepodařilo rozpoznat.", details: error.message });
+  }
+});
+
+app.post("/api/ai/generate", requireAuth, async (req, res) => {
+  try {
+    const result = await callGemini({
+      promptText: normalizeText(req.body?.promptText, 30000),
+      systemInstruction: "Jsi asistent pro pracovní výkazy OPZ+. Vrať pouze činnosti dodané uživatelem a rozděl mezi ně hodiny; texty neměň a nové činnosti nepřidávej.",
+      responseSchema: { type: "ARRAY", items: { type: "OBJECT", properties: { desc: { type: "STRING" }, hours: { type: "NUMBER" } }, required: ["desc", "hours"] } },
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({ error: "AI požadavek selhal.", details: error.message });
+  }
+});
+
+app.post("/api/meetings/:id/pdf", requireAuth, leaderOnly, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file || req.file.mimetype !== "application/pdf") return res.status(400).json({ error: "Nahrajte PDF zápisu." });
+    const db = await readDb();
+    const meeting = db.meetings.find((item) => item.id === req.params.id);
+    if (!meeting) return res.status(404).json({ error: "Porada nebyla nalezena." });
+    if (!["manager", "director"].includes(req.auth.employee.appRole) && meeting.createdBy !== req.auth.employee.id) return res.status(403).json({ error: "PDF této porady nemůžete uložit." });
+    const uploaded = await googleWorkspace.uploadFile({
+      name: `${meeting.date}__zapis_z_porady.pdf`, mimeType: "application/pdf", buffer: req.file.buffer,
+      pathSegments: [String(new Date(meeting.date).getFullYear()), "Porady"],
+    });
+    let localFilePath = "";
+    if (!uploaded.uploaded) {
+      const directory = path.join(path.dirname(DB_PATH), "meeting-pdfs");
+      await fs.mkdir(directory, { recursive: true });
+      localFilePath = path.join(directory, `${meeting.id}.pdf`);
+      await fs.writeFile(localFilePath, req.file.buffer);
+    }
+    const updated = await mutateDb(async (current) => {
+      const item = current.meetings.find((entry) => entry.id === meeting.id);
+      item.driveFileId = uploaded.id || "";
+      item.driveFileUrl = uploaded.webViewLink || "";
+      item.localFilePath = localFilePath;
+      item.status = "archived";
+      item.updatedAt = now();
+      addAudit(current, req.auth.employee, "archive", "meeting", item.id);
+      return { data: current, value: item };
+    });
+    const replacedDriveFile = uploaded.uploaded && meeting.driveFileId && meeting.driveFileId !== uploaded.id
+      ? await trashFileSafe(meeting.driveFileId)
+      : null;
+    if (uploaded.uploaded && meeting.localFilePath) {
+      await fs.rm(meeting.localFilePath, { force: true }).catch(() => undefined);
+    }
+    const sync = await syncRecordSafe("meeting", updated);
+    res.json({ meeting: updated, upload: uploaded, replacedDriveFile, sync });
+  } catch (error) {
+    res.status(500).json({ error: "PDF zápisu se nepodařilo uložit.", details: error.message });
+  }
+});
+
+app.post("/api/signed-reports/analyze", requireAuth, signedReportUploaderOnly, signedReportUpload.fields([
+  { name: "bundles", maxCount: 50 },
+  { name: "bundle", maxCount: 1 },
+]), async (req, res) => {
+  try {
+    const files = [...(req.files?.bundles || []), ...(req.files?.bundle || [])];
+    if (!files.length) return res.status(400).json({ error: "Vyberte alespoň jeden PDF nebo ZIP soubor." });
+    if (files.reduce((sum, file) => sum + file.size, 0) > 200 * 1024 * 1024) {
+      return res.status(400).json({ error: "Vybrané soubory mohou mít dohromady nejvýše 200 MB." });
+    }
+    if (files.some((file) => ![".pdf", ".zip"].includes(path.extname(file.originalname).toLowerCase()))) {
+      return res.status(400).json({ error: "Podporovány jsou pouze PDF a ZIP soubory." });
+    }
+    const db = await readDb();
+    const reports = signedUploadReports(db, req.auth.employee);
+    const analysis = await analyzeBundles({
+      files: files.map((file) => ({ buffer: file.buffer, originalName: file.originalname })),
+      reports,
+    });
+    res.json({ ...analysis, expectedReports: reports });
+  } catch (error) {
+    res.status(400).json({ error: "Soubory se nepodařilo analyzovat.", details: error.message });
+  }
+});
+
+app.post("/api/signed-reports/commit", requireAuth, signedReportUploaderOnly, async (req, res) => {
+  let importDir = "";
+  try {
+    const db = await readDb();
+    const mappings = Array.isArray(req.body?.mappings) ? req.body.mappings : [];
+    if (!mappings.length) throw new Error("Nebyla potvrzena žádná stránka výkazu.");
+    const knownIds = new Set(signedUploadReports(db, req.auth.employee).map((item) => item.id));
+    if (mappings.some((item) => item.reportId && !knownIds.has(item.reportId))) throw new Error("Import odkazuje na neznámý výkaz.");
+    const candidateIds = mappings.map((item) => String(item.candidateId || ""));
+    if (new Set(candidateIds).size !== candidateIds.length) throw new Error("Jedna stránka importu byla přiřazena vícekrát.");
+    const merged = await mergeMappedCandidates(req.body?.importId, mappings);
+    importDir = merged.importDir;
+    const prepared = merged.results.map((result) => ({ ...result, fileHash: fileHash(result.buffer) }));
+    const batchHashes = new Set();
+    for (const result of prepared) {
+      if (batchHashes.has(result.fileHash)) {
+        const conflict = new Error("Stejný podepsaný výkaz je v tomto nahrání zařazen vícekrát.");
+        conflict.status = 409;
+        throw conflict;
+      }
+      batchHashes.add(result.fileHash);
+      const duplicate = findDuplicateByFileHash(db.workReports, result.fileHash);
+      if (duplicate) {
+        const conflict = new Error(`Tento podepsaný soubor už je uložen u výkazu ${duplicate.employeeName} · ${duplicate.positionName} · ${duplicate.month}/${duplicate.year}.`);
+        conflict.status = 409;
+        throw conflict;
+      }
+    }
+    const archived = [];
+    for (const result of prepared) {
+      const report = db.workReports.find((item) => item.id === result.reportId);
+      const filename = `${report.year}-${String(report.month).padStart(2, "0")}__${safeName(report.positionName)}__${safeName(report.employeeName)}__podepsano.pdf`;
+      const uploaded = await googleWorkspace.uploadFile({
+        name: filename, mimeType: "application/pdf", buffer: result.buffer,
+        pathSegments: [String(report.year), "Pracovni vykazy", String(report.month).padStart(2, "0"), report.employeeName],
+      });
+      let localFilePath = "";
+      if (!uploaded.uploaded) {
+        const directory = path.join(path.dirname(DB_PATH), "signed-reports", String(report.year), String(report.month).padStart(2, "0"));
+        await fs.mkdir(directory, { recursive: true });
+        localFilePath = path.join(directory, `${report.id}.pdf`);
+        await fs.writeFile(localFilePath, result.buffer);
+      }
+      const updated = await mutateDb(async (current) => {
+        const item = current.workReports.find((entry) => entry.id === report.id);
+        item.status = "signed_archived";
+        item.driveFileId = uploaded.id || "";
+        item.driveFileUrl = uploaded.webViewLink || "";
+        item.localFilePath = localFilePath;
+        item.fileHash = result.fileHash;
+        item.signedAt = now();
+        item.updatedAt = now();
+        addAudit(current, req.auth.employee, "signed_archive", "workReport", item.id, { pages: result.pageCount });
+        return { data: current, value: item };
+      });
+      await syncRecordSafe("workReport", updated);
+      archived.push(updated);
+    }
+    await removeImport(merged.importDir);
+    importDir = "";
+    res.json({ reports: archived });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: "Podepsané výkazy se nepodařilo uložit.", details: error.message });
+  } finally {
+    if (importDir) await removeImport(importDir).catch((error) => console.error("Temporary report import cleanup failed:", error));
   }
 });
 
 const DIST_PATH = path.join(__dirname, "dist");
 const INDEX_HTML_PATH = path.join(DIST_PATH, "index.html");
-
 app.use(express.static(DIST_PATH));
-
 app.use((req, res, next) => {
-  if (req.path.startsWith("/api/")) {
-    return next();
-  }
-
-  if (fsSync.existsSync(INDEX_HTML_PATH)) {
-    return res.sendFile(INDEX_HTML_PATH);
-  }
-
-  return res.status(404).send(
-    "Frontend build nebyl nalezen. Spusťte nejdříve: npm run build"
-  );
+  if (req.path.startsWith("/api/")) return next();
+  if (fsSync.existsSync(INDEX_HTML_PATH)) return res.sendFile(INDEX_HTML_PATH);
+  return res.status(404).send("Frontend build nebyl nalezen. Spusťte nejdříve: npm run build");
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Database path: ${DB_PATH}`);
+app.use((error, _req, res, _next) => {
+  if (error instanceof multer.MulterError) return res.status(400).json({ error: "Nahraný soubor je příliš velký nebo neplatný.", details: error.message });
+  console.error("Unhandled server error:", error);
+  return res.status(500).json({ error: "Neočekávaná chyba serveru.", details: error.message });
+});
+
+async function startServer() {
+  const sheets = await googleWorkspace.ensureSheets();
+  if (sheets.ready) console.log(`Google Sheets ready: ${sheets.sheets.join(", ")}`);
+  if (process.env.GOOGLE_SHEETS_PRIMARY === "true") {
+    const local = await readDb();
+    if (!local.employees.length) {
+      const snapshot = await googleWorkspace.loadDatabaseSnapshot();
+      if (snapshot.employees.length) {
+        await writeDb(snapshot);
+        console.log(`Database restored from Google Sheets (${snapshot.employees.length} employees).`);
+      } else {
+        console.log("Google Sheets snapshot is empty; initial application setup is required.");
+      }
+    }
+  }
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Database path: ${DB_PATH}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error("Application startup failed:", error);
+  process.exitCode = 1;
 });
