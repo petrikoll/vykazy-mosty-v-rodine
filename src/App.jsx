@@ -184,7 +184,14 @@ export default function App() {
       <section className="min-w-0">
         <header className="flex min-h-16 items-center justify-between gap-3 border-b border-blue-800 bg-blue-900 px-4 py-2 text-white shadow-md sm:px-5">
           <div className="flex items-center gap-2 text-sm font-semibold capitalize text-blue-100"><CalendarDays size={16}/>{currentPeriod}</div>
-          <div className="flex items-center gap-2"><div className="mr-1 hidden text-right sm:block"><div className="text-sm font-bold text-white">{employee.name}</div><div className="text-xs text-blue-200">{roleLabel}</div></div><PushNotificationButton employeeId={employee.id}/><Button variant="secondary" className="px-2.5" onClick={() => setShowPinChange(true)} aria-label="Změnit PIN"><KeyRound size={16}/><span className="ml-2 hidden md:inline">Změnit PIN</span></Button><Button variant="secondary" className="px-2.5" onClick={logout} aria-label="Odhlásit"><LogOut size={16}/><span className="ml-2 hidden md:inline">Odhlásit</span></Button></div>
+          <div className="flex items-center gap-2">
+            <div className="mr-1 hidden text-right sm:block"><div className="text-sm font-bold text-white">{employee.name}</div><div className="text-xs text-blue-200">{roleLabel}</div></div>
+            <div className="flex items-center gap-1 rounded-lg border border-white/15 bg-blue-950/30 p-1 shadow-inner">
+              <PushNotificationButton employeeId={employee.id}/>
+              <Button variant="header" compact onClick={() => setShowPinChange(true)} aria-label="Změnit PIN" title="Změnit osobní PIN"><KeyRound size={15}/><span className="ml-1.5 hidden xl:inline">PIN</span></Button>
+              <Button variant="header" compact onClick={logout} aria-label="Odhlásit" title="Odhlásit z portálu"><LogOut size={15}/><span className="ml-1.5 hidden xl:inline">Odhlásit</span></Button>
+            </div>
+          </div>
         </header>
         <main className="mx-auto w-full max-w-[1520px] p-3 sm:p-5">
         {driveNotice && <div className={`mb-4 rounded-lg border p-3 text-sm font-semibold ${driveNotice.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>{driveNotice.text}</div>}

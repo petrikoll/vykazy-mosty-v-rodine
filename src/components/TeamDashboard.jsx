@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { ClipboardCheck, GraduationCap, ListChecks, ShieldCheck, Users } from "lucide-react";
-import { Card, Select, StatusBadge } from "./Common.jsx";
+import { ClipboardCheck, GraduationCap, ListChecks, RotateCcw, ShieldCheck, Users } from "lucide-react";
+import { Button, Card, Field, Input, StatusBadge } from "./Common.jsx";
+import { dateInRange, dateRangesOverlap, reportOverlapsRange, yearsCovered } from "../dashboardRange.mjs";
 
 const YEARS = [2026, 2027, 2028];
 
@@ -9,12 +10,19 @@ function initialYear() {
   return YEARS.includes(current) ? current : YEARS[0];
 }
 
-function recordYear(value) {
-  return Number(String(value || "").slice(0, 4));
+function initialRange() {
+  const year = initialYear();
+  return { dateFrom: `${year}-01-01`, dateTo: `${year}-12-31` };
 }
 
 function formatHours(value) {
   return Number(value || 0).toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
+}
+
+function formatDate(value) {
+  const [year, month, day] = String(value || "").split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return new Intl.DateTimeFormat("cs-CZ").format(new Date(year, month - 1, day));
 }
 
 function positionNames(employee, positions) {
@@ -25,20 +33,26 @@ function positionNames(employee, positions) {
 }
 
 export default function TeamDashboard({ portal, positions, onNavigate }) {
-  const [year, setYear] = useState(initialYear);
+  const [range, setRange] = useState(initialRange);
+  const { dateFrom, dateTo } = range;
+  const planYears = useMemo(() => yearsCovered(dateFrom, dateTo), [dateFrom, dateTo]);
   const isAdmin = ["director", "project_manager"].includes(portal.employee.appRole);
   const visibleEmployees = useMemo(() => portal.employees.filter((employee) => employee.active !== false
     && (isAdmin || employee.id === portal.employee.id || employee.appRole === "worker")), [portal.employee.id, portal.employees, isAdmin]);
 
   const rows = useMemo(() => visibleEmployees.map((employee) => {
     const educationRecords = portal.educationRecords.filter((record) => record.employeeId === employee.id
-      && recordYear(record.dateFrom || record.date) === year);
-    const supervisions = portal.supervisions.filter((record) => recordYear(record.date) === year
+      && dateRangesOverlap(record.dateFrom || record.date, record.dateTo || record.dateFrom || record.date, dateFrom, dateTo));
+    const supervisions = portal.supervisions.filter((record) => dateInRange(record.date, dateFrom, dateTo)
       && (record.participantIds || []).includes(employee.id));
-    const reports = portal.workReports.filter((report) => report.employeeId === employee.id && Number(report.year) === year);
-    const plan = portal.educationPlans.find((item) => item.employeeId === employee.id && Number(item.year) === year);
-    const meetingTasks = portal.meetings.filter((meeting) => meeting.status !== "draft" && recordYear(meeting.date) === year)
-      .flatMap((meeting) => (meeting.tasks || []).filter((task) => ([...(task.ownerIds || []), task.ownerId].includes(employee.id)) && task.status !== "completed"));
+    const reports = portal.workReports.filter((report) => report.employeeId === employee.id && reportOverlapsRange(report, dateFrom, dateTo));
+    const plans = planYears.map((year) => ({
+      year,
+      status: portal.educationPlans.find((item) => item.employeeId === employee.id && Number(item.year) === year)?.status || "missing_plan",
+    }));
+    const meetingTasks = portal.meetings.filter((meeting) => meeting.status !== "draft")
+      .flatMap((meeting) => (meeting.tasks || []).filter((task) => ([...(task.ownerIds || []), task.ownerId].includes(employee.id))
+        && task.status !== "completed" && dateInRange(task.deadline || meeting.date, dateFrom, dateTo)));
     return {
       employee,
       positions: positionNames(employee, positions),
@@ -48,11 +62,11 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
       reportCount: reports.length,
       approvedReportCount: reports.filter((report) => ["approved", "ready_for_signature", "signed_archived"].includes(report.status)).length,
       returnedReportCount: reports.filter((report) => report.status === "returned").length,
-      planStatus: plan?.status || "missing_plan",
+      plans,
       taskCount: meetingTasks.length,
       projectManager: employee.appRole === "project_manager",
     };
-  }), [portal.educationPlans, portal.educationRecords, portal.meetings, portal.supervisions, portal.workReports, positions, visibleEmployees, year]);
+  }), [dateFrom, dateTo, planYears, portal.educationPlans, portal.educationRecords, portal.meetings, portal.supervisions, portal.workReports, positions, visibleEmployees]);
 
   const totals = rows.reduce((result, row) => ({
     educationHours: result.educationHours + row.educationHours,
@@ -69,12 +83,26 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
     { label: "Úkoly z porad", value: totals.tasks, icon: ListChecks, tone: "bg-slate-100 text-slate-900" },
   ];
 
+  const updateDateFrom = (value) => {
+    if (!value) return;
+    setRange((current) => ({ dateFrom: value, dateTo: current.dateTo < value ? value : current.dateTo }));
+  };
+  const updateDateTo = (value) => {
+    if (!value) return;
+    setRange((current) => ({ dateFrom: current.dateFrom > value ? value : current.dateFrom, dateTo: value }));
+  };
+  const rangeLabel = `${formatDate(dateFrom)} – ${formatDate(dateTo)}`;
+
   return <div className="space-y-3">
-    <Card title="Dashboard týmu" subtitle="Kompaktní souhrn personální evidence za vybraný rok." actions={<div className="w-36"><Select aria-label="Rok dashboardu" value={year} onChange={(event) => setYear(Number(event.target.value))}>{YEARS.map((item) => <option key={item} value={item}>{item}</option>)}</Select></div>}>
+    <Card title="Dashboard týmu" subtitle="Souhrn se přepočítává podle zvoleného období; úkoly se řídí termínem splnění." actions={<div className="flex flex-wrap items-end justify-end gap-2">
+      <div className="w-36"><Field label="Od"><Input type="date" min={`${YEARS[0]}-01-01`} max={`${YEARS.at(-1)}-12-31`} value={dateFrom} onChange={(event) => updateDateFrom(event.target.value)}/></Field></div>
+      <div className="w-36"><Field label="Do"><Input type="date" min={`${YEARS[0]}-01-01`} max={`${YEARS.at(-1)}-12-31`} value={dateTo} onChange={(event) => updateDateTo(event.target.value)}/></Field></div>
+      <Button variant="secondary" compact onClick={() => setRange(initialRange())} title="Nastavit celý aktuální rok"><RotateCcw className="mr-1 inline" size={14}/>Celý rok</Button>
+    </div>}>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{summary.map(({ label, value, icon: Icon, tone }) => <div key={label} className={`flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 ${tone}`}><Icon className="shrink-0" size={18}/><div><div className="text-[10px] font-bold uppercase tracking-wide opacity-70">{label}</div><div className="text-lg font-extrabold">{value}</div></div></div>)}</div>
     </Card>
 
-    <Card title={`Přehled pracovníků · ${year}`} subtitle="Hodiny vycházejí z uložených záznamů; týmová supervize se započítá každému účastníkovi.">
+    <Card title={`Přehled pracovníků · ${rangeLabel}`} subtitle="Vzdělávání se započítá, pokud alespoň jeho část zasahuje do období; týmová supervize se započítá každému účastníkovi.">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[840px] text-left text-sm">
           <thead><tr className="border-b border-slate-200 text-xs uppercase text-slate-500"><th className="px-2 py-2">Pracovník a pozice</th><th className="px-2 py-2 text-right">Vzdělávání</th><th className="px-2 py-2 text-right">Supervize</th><th className="px-2 py-2">Vzdělávací plán</th><th className="px-2 py-2">Výkazy práce</th><th className="px-2 py-2 text-right">Úkoly</th></tr></thead>
@@ -82,7 +110,7 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
             <td className="px-2 py-2.5"><strong className="text-slate-950">{row.employee.name}</strong><div className="mt-0.5 text-xs text-slate-500">{row.positions.join(" · ") || "Bez přiřazené pozice"}</div></td>
             <td className="px-2 py-2.5 text-right">{row.projectManager ? <span className="text-slate-400">—</span> : <button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("education")}>{formatHours(row.educationHours)} h</button>}</td>
             <td className="px-2 py-2.5 text-right"><button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("supervisions")}>{formatHours(row.supervisionHours)} h</button><div className="text-[11px] text-slate-500">{row.supervisionCount} záznamů</div></td>
-            <td className="px-2 py-2.5">{row.projectManager ? <span className="text-xs font-semibold text-slate-500">Nevyžaduje se</span> : <button onClick={() => onNavigate("education")}><StatusBadge status={row.planStatus}/></button>}</td>
+            <td className="px-2 py-2.5">{row.projectManager ? <span className="text-xs font-semibold text-slate-500">Nevyžaduje se</span> : <button className="space-y-1 text-left" onClick={() => onNavigate("education")}>{row.plans.map((plan) => <span key={plan.year} className="flex items-center gap-1.5"><span className="text-[11px] font-semibold text-slate-500">{plan.year}</span><StatusBadge status={plan.status}/></span>)}</button>}</td>
             <td className="px-2 py-2.5">{row.projectManager ? <span className="text-xs font-semibold text-slate-500">Nevyžaduje se</span> : <button className="text-left hover:underline" onClick={() => onNavigate("reports")}><strong>{row.approvedReportCount} schváleno</strong><span className="text-slate-500"> / {row.reportCount} celkem</span>{row.returnedReportCount > 0 && <span className="block text-xs font-bold text-red-700">{row.returnedReportCount} vráceno</span>}</button>}</td>
             <td className="px-2 py-2.5 text-right"><button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("meetings")}>{row.taskCount}</button></td>
           </tr>)}</tbody>

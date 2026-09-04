@@ -63,8 +63,12 @@ export default function PushNotificationButton({ employeeId }) {
   };
 
   return <>
-    <Button variant="secondary" className="px-2.5" disabled={busy} onClick={enableOrTest} title={enabled ? "Upozornění jsou zapnutá; kliknutím odešlete zkoušku" : "Zapnout upozornění i při zavřené aplikaci"} aria-label={enabled ? "Vyzkoušet upozornění" : "Zapnout upozornění"}>
-      {enabled ? <BellRing size={16}/> : <Bell size={16}/>}<span className="ml-2 hidden xl:inline">{enabled ? "Upozornění zapnuta" : "Zapnout upozornění"}</span>
+    <Button variant="header" compact disabled={busy} onClick={enableOrTest} title={enabled ? "Upozornění jsou zapnutá; kliknutím odešlete zkoušku" : "Zapnout upozornění i při zavřené aplikaci"} aria-label={enabled ? "Vyzkoušet upozornění" : "Zapnout upozornění"}>
+      <span className="relative inline-flex">
+        {enabled ? <BellRing size={15}/> : <Bell size={15}/>}
+        <span className={`absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full ${enabled ? "bg-emerald-300" : "bg-amber-300"}`} aria-hidden="true"/>
+      </span>
+      <span className="ml-1.5 hidden xl:inline">Upozornění</span>
     </Button>
     {message && <div className={`fixed bottom-4 right-4 z-[80] max-w-sm rounded-lg border px-4 py-3 text-sm font-semibold shadow-xl ${message.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`} role="status">{message.text}</div>}
   </>;

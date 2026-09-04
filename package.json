@@ -5,7 +5,7 @@
     "dev:api": "node server.js",
     "build": "vite build",
     "start": "node server.js",
-    "test": "node tests/auth.test.cjs && node tests/educationPolicy.test.cjs && node tests/evaluationPolicy.test.cjs && node tests/storageMigration.test.cjs && node tests/educationStorage.test.cjs && node tests/fileDeduplication.test.cjs && node tests/czechVocative.test.mjs && node tests/projectConfig.test.mjs && node tests/workReportRules.test.mjs && node tests/reportRecalc.test.mjs && node tests/timeRange.test.mjs && node tests/meetingUtils.test.mjs && node tests/signedReportImport.test.mjs && node tests/workReportPrint.test.mjs && node tests/exportZip.test.mjs && node tests/methodologyQuiz.test.mjs && node tests/idleTracker.test.mjs && node tests/methodologyPolicy.test.cjs",
+    "test": "node tests/auth.test.cjs && node tests/educationPolicy.test.cjs && node tests/evaluationPolicy.test.cjs && node tests/storageMigration.test.cjs && node tests/educationStorage.test.cjs && node tests/fileDeduplication.test.cjs && node tests/czechVocative.test.mjs && node tests/projectConfig.test.mjs && node tests/workReportRules.test.mjs && node tests/reportRecalc.test.mjs && node tests/timeRange.test.mjs && node tests/dashboardRange.test.mjs && node tests/meetingUtils.test.mjs && node tests/signedReportImport.test.mjs && node tests/workReportPrint.test.mjs && node tests/exportZip.test.mjs && node tests/methodologyQuiz.test.mjs && node tests/idleTracker.test.mjs && node tests/methodologyPolicy.test.cjs",
     "methodology:import": "node scripts/importMethodologyQuiz.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },

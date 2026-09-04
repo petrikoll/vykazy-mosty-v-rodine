@@ -46,14 +46,16 @@ export const Select = (props) => (
   <select {...props} className={`min-h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 ${props.className || ""}`} />
 );
 
-export const Button = ({ variant = "primary", className = "", ...props }) => {
+export const Button = ({ variant = "primary", compact = false, className = "", ...props }) => {
   const variants = {
     primary: "bg-blue-700 text-white hover:bg-blue-800",
     secondary: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
     success: "bg-emerald-600 text-white hover:bg-emerald-700",
     danger: "border border-red-300 bg-white text-red-700 hover:bg-red-50",
+    header: "border border-white/20 bg-white/10 text-white hover:bg-white/20",
   };
-  return <button {...props} className={`min-h-9 rounded-md px-3 py-1.5 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`} />;
+  const sizing = compact ? "min-h-8 px-2.5 py-1 text-xs" : "min-h-9 px-3 py-1.5 text-sm";
+  return <button {...props} className={`${sizing} rounded-md font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`} />;
 };
 
 export const Card = ({ title, subtitle, actions, children, className = "" }) => (

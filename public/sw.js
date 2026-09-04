@@ -1,4 +1,4 @@
-const CACHE_NAME = "mosty-portal-v2";
+const CACHE_NAME = "mosty-portal-v3";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
