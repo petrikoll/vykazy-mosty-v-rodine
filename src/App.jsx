@@ -169,7 +169,7 @@ export default function App() {
   return <div className="app-shell-background min-h-screen text-slate-900">
     <MethodologySaver employee={employee} history={portal.methodologyAnswers || []} onAnswerSaved={rememberMethodologyAnswer}/>
     {showPinChange && <ChangePinDialog onClose={() => setShowPinChange(false)} onChanged={refresh}/>}
-    <div className="mx-auto min-h-screen max-w-[1440px] lg:grid lg:grid-cols-[224px_minmax(0,1fr)]">
+    <div className="min-h-screen w-full lg:grid lg:grid-cols-[224px_minmax(0,1fr)]">
       <aside className="bg-blue-950 px-3 py-3 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:px-3 lg:py-4">
         <div className="mb-2 flex items-center gap-3 px-2 lg:mb-5"><div className="rounded-xl bg-white/10 p-2.5"><BriefcaseBusiness size={24}/></div><div><h1 className="font-bold">Mosty v rodině</h1><p className="text-xs text-blue-200">Personální portál</p></div></div>
         <nav className="no-scrollbar flex flex-nowrap gap-1 overflow-x-auto pb-1 lg:block lg:overflow-visible lg:pb-0" aria-label="Hlavní nabídka">{navGroups.map((group) => <div key={group.label} className="contents lg:mb-4 lg:block">
@@ -186,7 +186,7 @@ export default function App() {
           <div className="flex items-center gap-2 text-sm font-semibold capitalize text-blue-100"><CalendarDays size={16}/>{currentPeriod}</div>
           <div className="flex items-center gap-2"><div className="mr-1 hidden text-right sm:block"><div className="text-sm font-bold text-white">{employee.name}</div><div className="text-xs text-blue-200">{roleLabel}</div></div><PushNotificationButton employeeId={employee.id}/><Button variant="secondary" className="px-2.5" onClick={() => setShowPinChange(true)} aria-label="Změnit PIN"><KeyRound size={16}/><span className="ml-2 hidden md:inline">Změnit PIN</span></Button><Button variant="secondary" className="px-2.5" onClick={logout} aria-label="Odhlásit"><LogOut size={16}/><span className="ml-2 hidden md:inline">Odhlásit</span></Button></div>
         </header>
-        <main className="p-3 sm:p-5">
+        <main className="mx-auto w-full max-w-[1520px] p-3 sm:p-5">
         {driveNotice && <div className={`mb-4 rounded-lg border p-3 text-sm font-semibold ${driveNotice.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>{driveNotice.text}</div>}
         {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
         {employee.pinMustChange && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><span><strong>Používáte dočasný PIN 1111.</strong> Nastavte si vlastní.</span><Button variant="secondary" className="min-h-8 py-1 text-xs" onClick={() => setShowPinChange(true)}><KeyRound size={14}/><span className="ml-1.5">Změnit PIN</span></Button></div>}
