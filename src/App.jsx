@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { BookOpenCheck, BriefcaseBusiness, CalendarDays, ClipboardList, GraduationCap, KeyRound, LayoutDashboard, LogOut, Settings2, ShieldCheck, X } from "lucide-react";
+import { BarChart3, BookOpenCheck, BriefcaseBusiness, CalendarDays, ClipboardList, GraduationCap, KeyRound, LayoutDashboard, LogOut, Settings2, ShieldCheck, X } from "lucide-react";
 import { api, jsonBody, getToken, setToken } from "./api.mjs";
 import { Button, Card, Field, Input, Select, useTimedNotice } from "./components/Common.jsx";
 import Education from "./components/Education.jsx";
@@ -10,6 +10,7 @@ import Meetings from "./components/Meetings.jsx";
 import Supervisions from "./components/Supervisions.jsx";
 import WorkReports from "./components/WorkReports.jsx";
 import PortalDashboard from "./components/PortalDashboard.jsx";
+import TeamDashboard from "./components/TeamDashboard.jsx";
 
 const NAV_GROUPS = [
   { label: "Přehled", items: [{ id: "dashboard", label: "Přehled úkolů", icon: LayoutDashboard }] },
@@ -139,6 +140,7 @@ export default function App() {
   if (!portal) return <AuthScreen setup={setup} setupCodeRequired={setupCodeRequired} options={options} onAuthenticated={async () => { await refresh(); setSetup(false); }} />;
 
   const employee = portal.employee;
+  const leader = ["manager", "director"].includes(employee.appRole);
   const navGroups = employee.appRole === "director"
     ? [...NAV_GROUPS, { label: "Správa", items: [{ id: "settings", label: "Pracovníci a nastavení", icon: Settings2 }] }]
     : NAV_GROUPS;
@@ -159,7 +161,10 @@ export default function App() {
           <div className="hidden px-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-blue-300 lg:block">{group.label}</div>
           {group.items.map((item) => { const Icon = item.icon; return <button key={item.id} onClick={() => setActive(item.id)} className={`flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-bold transition lg:mb-1 lg:w-full ${active === item.id ? "bg-white text-blue-900" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}><Icon size={17}/><span>{item.label}</span></button>; })}
         </div>)}</nav>
-        <div className="mt-auto hidden border-t border-white/15 px-2 pt-4 text-[11px] text-blue-200 lg:block">{config.project.regNumber}</div>
+        <div className="mt-2 border-t border-white/15 pt-2 lg:mt-auto">
+          {leader && <button onClick={() => setActive("teamDashboard")} className={`mb-2 flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-bold transition ${active === "teamDashboard" ? "bg-white text-blue-900" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}><BarChart3 size={17}/><span>Dashboard týmu</span></button>}
+          <div className="hidden px-2 pt-2 text-[11px] text-blue-200 lg:block">{config.project.regNumber}</div>
+        </div>
       </aside>
       <section className="min-w-0">
         <header className="flex min-h-16 items-center justify-between gap-3 border-b border-blue-800 bg-blue-900 px-4 py-2 text-white shadow-md sm:px-5">
@@ -173,6 +178,7 @@ export default function App() {
         {!portal.google.sheetsConfigured && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Google Sheet je připravený, ale aplikace zatím nemá servisní účet.</strong> Do jeho doplnění se záznamy bezpečně ukládají do místní databáze.</div>}
         {active !== "dashboard" && portal.google.sheetsConfigured && !portal.google.driveConfigured && <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900"><strong>Google Sheet je připojený.</strong> Google Drive se připojí jednou v Nastavení.</div>}
         {active === "dashboard" && <PortalDashboard portal={portal} positions={config.positions} project={config.project} onNavigate={setActive}/>}
+        {active === "teamDashboard" && leader && <TeamDashboard portal={portal} positions={config.positions} onNavigate={setActive}/>}
         {active === "reports" && (["manager", "director"].includes(employee.appRole)
           ? <ManagerReports portal={portal} positions={config.positions} project={config.project} onRefresh={refresh}/>
           : <WorkReports employee={employee} positions={config.positions} project={config.project} reports={ownReports} onRefresh={refresh}/>)}
