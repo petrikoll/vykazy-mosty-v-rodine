@@ -195,7 +195,7 @@ export default function WorkReports({ employee, positions, project, reports, onR
   };
 
   return <div className="mx-auto max-w-5xl space-y-3">
-    <Card title="1. Období a nepřítomnost" subtitle="Po změně dovolené nebo nemoci se hodiny přepočítají automaticky.">
+    <Card title={<><span className="mr-1.5 text-blue-700">1.</span>{" "}Období a nepřítomnost</>} subtitle="Po změně dovolené nebo nemoci se hodiny přepočítají automaticky.">
       {notice && <div className={`mb-4 flex gap-2 rounded-lg p-3 text-sm font-semibold ${notice.type === "error" ? "bg-red-50 text-red-700" : notice.type === "warn" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>{notice.type === "error" ? <AlertCircle size={18}/> : <CheckCircle2 size={18}/>} {notice.text}</div>}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         <Field label="Měsíc"><Select value={period.month} onChange={(event) => setPeriod((p) => ({ ...p, month: Number(event.target.value) }))}>{MONTHS.map((label, index) => <option key={label} value={index + 1}>{label}</option>)}</Select></Field>
@@ -205,9 +205,11 @@ export default function WorkReports({ employee, positions, project, reports, onR
       </div>
     </Card>
 
-    {roleReports.map((report) => <section key={report.role.id} className="rounded-xl border border-slate-300 bg-white p-4 shadow-md shadow-slate-200/60">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div><div className="text-xs font-bold uppercase tracking-wide text-blue-700">2. Činnosti</div><h2 className="mt-0.5 text-lg font-bold text-slate-950">{report.role.positionName}</h2><p className="text-xs text-slate-500">{report.role.allocationType === "hours" ? `${report.role.monthlyHours} h/měsíc` : `${report.role.fte} úvazku`}</p></div>
+    <section className="space-y-2">
+      <h2 className="px-1 text-base font-bold text-slate-950"><span className="mr-1.5 text-blue-700">2.</span>{" "}Vykázané činnosti</h2>
+    {roleReports.map((report) => <section key={report.role.id} className="rounded-xl border border-blue-300 bg-white p-3 shadow-sm">
+      <div className="-mx-3 -mt-3 flex flex-col gap-2 rounded-t-xl border-b border-blue-200 bg-blue-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+        <div><h3 className="text-base font-bold text-slate-950">{report.role.positionName}</h3><p className="text-xs text-slate-500">{report.role.allocationType === "hours" ? `${report.role.monthlyHours} h/měsíc` : `${report.role.fte} úvazku`}</p></div>
         <div className="flex flex-wrap items-center gap-2">{report.existingReport && <StatusBadge status={report.existingReport.status}/>} {(report.existingReport?.driveFileId || report.existingReport?.localFilePath) && <Button variant="secondary" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => previewSignedReport(report.existingReport)}><Eye className="mr-1 inline" size={14}/>Náhled na Disku</Button>} {canDelete && report.existingReport && <Button variant="danger" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => deleteExistingReport(report.existingReport)}><Trash2 className="mr-1 inline" size={14}/>Smazat výkaz</Button>}<button className="min-h-8 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => setExpanded((ids) => ids.includes(report.role.id) ? ids.filter((id) => id !== report.role.id) : [...ids, report.role.id])}>{expanded.includes(report.role.id) ? "Skrýt" : "Zobrazit"}</button></div>
       </div>
       {report.existingReport?.status === "returned" && report.existingReport.managerComment && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><strong>{report.existingReport.reviewedByRole === "director" ? "Poznámka Vedoucí služby/programu:" : "Poznámka Odborného garanta:"}</strong> {report.existingReport.managerComment}</div>}
@@ -221,16 +223,15 @@ export default function WorkReports({ employee, positions, project, reports, onR
         </div>)}
         <div className="mt-2 flex flex-wrap gap-2"><Button variant="secondary" disabled={report.locked || report.activities.length >= 10} onClick={() => updateActivities(report.role.id, (items) => [...items, { desc: "", hours: 0 }])}><Plus className="mr-1 inline" size={16}/>Přidat činnost</Button><Button variant="secondary" disabled={report.locked} onClick={() => updateActivities(report.role.id, (items) => distributeActivitiesByWeights(items, report.target))}>Přepočítat hodiny</Button></div>
       </div>}
-    </section>)}
+    </section>)}</section>
 
-    <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-      <div className="mb-3"><div className="text-xs font-bold uppercase tracking-wide text-blue-700">3. Dokončení</div><h2 className="mt-0.5 text-base font-bold text-slate-950">{topLevel ? "Uložit výkaz" : "Předat ke kontrole"}</h2></div>
+    <Card tone="blue" title={<><span className="mr-1.5 text-blue-700">3.</span>{" "}{topLevel ? "Uložit výkaz" : "Předat ke kontrole"}</>}>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button className="w-full sm:w-auto" disabled={!ready || busy} onClick={submit}>{busy ? "Ukládám…" : topLevel ? "Uložit jako připravené k podpisu" : selfManaged ? "Předat Vedoucí služby/programu" : "Předat Odbornému garantovi ke kontrole"}</Button>
         <Button variant="secondary" disabled={busy || !roleReports.length} onClick={printCurrentReports}>{topLevel ? "Vytisknout výkaz" : "Stáhnout / vytisknout"}</Button>
       </div>
       {!roles.length && <p className="mt-3 text-sm text-red-700">Nemáte přiřazenou pozici, pro kterou se vytváří výkaz.</p>}
       {roleReports.some((item) => Math.abs(item.status.diff) > HOURS_TOLERANCE) && <p className="mt-3 text-sm text-red-700">Před předáním dorovnejte hodiny ve všech výkazech.</p>}
-    </section>
+    </Card>
   </div>;
 }

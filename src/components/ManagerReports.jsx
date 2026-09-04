@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from "react";
+import { useGuardedState } from "../unsavedChanges.jsx";
 import { CheckCircle2, Download, Eye, RotateCcw, Trash2, X } from "lucide-react";
 import { api, jsonBody, openApiFilePreview } from "../api.mjs";
 import { downloadWorkReports } from "../workReportDownload.mjs";
 import { printWorkReports } from "../workReportPrint.mjs";
 import WorkReports from "./WorkReports.jsx";
-import { Button, Card, Empty, Field, Notice, Select, StatusBadge, Textarea, useTimedNotice } from "./Common.jsx";
+import { Button, Card, Empty, Field, Notice, Select, SectionTabs, StatusBadge, Textarea, useTimedNotice } from "./Common.jsx";
 import SignedReportUpload from "./SignedReportUpload.jsx";
 
 const acceptedStatuses = new Set(["submitted", "ready_for_signature", "approved", "printed", "signed_archived"]);
@@ -23,7 +24,8 @@ function defaultPeriod(project) {
 }
 
 function ReportDetail({ report, reviewerRole, busy, canDelete, canReview, onClose, onDelete, onDownload, onPreview, onStatusChange }) {
-  const [returnNote, setReturnNote] = useState("");
+  const [returnNote, setReturnNote, , noteGuard] = useGuardedState("");
+  const close = () => { if (noteGuard.confirmDiscard()) onClose(); };
   const absences = report.absences || {};
   const canReturn = canReview && report.status === "submitted";
 
@@ -35,7 +37,7 @@ function ReportDetail({ report, reviewerRole, busy, canDelete, canReview, onClos
           <h2 className="text-xl font-bold text-slate-900">{report.employeeName}</h2>
           <p className="text-sm text-slate-600">{report.positionName} · {report.month}/{report.year}</p>
         </div>
-        <button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={onClose} aria-label="Zavřít detail"><X size={22}/></button>
+        <button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={close} aria-label="Zavřít detail"><X size={22}/></button>
       </header>
 
       <div className="space-y-5 p-5">
@@ -51,7 +53,7 @@ function ReportDetail({ report, reviewerRole, busy, canDelete, canReview, onClos
         <section>
           <h3 className="mb-2 font-bold text-slate-900">Vykázané činnosti</h3>
           <div className="overflow-hidden rounded-lg border border-slate-200">
-            <table className="w-full text-left text-sm">
+            <table className="record-table w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-500"><tr><th className="p-3">Činnost</th><th className="w-28 p-3 text-right">Hodiny</th></tr></thead>
               <tbody>{(report.activities || []).map((activity, index) => <tr key={index} className="border-t border-slate-100"><td className="whitespace-pre-wrap p-3">{activity.desc}</td><td className="p-3 text-right font-bold">{formatHours(activity.hours)}</td></tr>)}</tbody>
             </table>
@@ -82,7 +84,7 @@ function ReportDetail({ report, reviewerRole, busy, canDelete, canReview, onClos
         <Button variant="secondary" disabled={busy} onClick={() => onDownload(report)}><Download className="mr-1 inline" size={16}/>Stáhnout výkaz</Button>
         {(report.driveFileId || report.localFilePath) && <Button variant="secondary" disabled={busy} onClick={() => onPreview(report)}><Eye className="mr-1 inline" size={16}/>Náhled na Disku</Button>}
         {canReturn && <Button disabled={busy} onClick={() => onStatusChange(report.id, "approved", "")}><CheckCircle2 className="mr-1 inline" size={16}/>Schválit</Button>}
-        <Button variant="secondary" onClick={onClose}>Zavřít</Button>
+        <Button variant="secondary" onClick={close}>Zavřít</Button>
       </footer>
     </div>
   </div>;
@@ -90,7 +92,7 @@ function ReportDetail({ report, reviewerRole, busy, canDelete, canReview, onClos
 
 function ReportsTable({ rows, busy, onSelect }) {
   return <div className="overflow-x-auto">
-    <table className="w-full min-w-[760px] text-left text-sm">
+    <table className="record-table w-full min-w-[760px] text-left text-sm">
       <thead><tr className="border-b text-slate-500"><th className="p-2">Pracovník</th><th className="p-2">Projektová pozice</th><th className="p-2">Rozsah</th><th className="p-2">Stav</th><th className="p-2">Předáno</th><th className="p-2 text-right">Akce</th></tr></thead>
       <tbody>{rows.map((row) => <tr key={row.report?.id || `${row.employee.id}-${row.assignment.id}`} className="border-b border-slate-100 last:border-b-0">
         <td className="p-2 font-bold text-slate-900">{row.employee.name}</td>
@@ -98,7 +100,7 @@ function ReportsTable({ rows, busy, onSelect }) {
         <td className="p-2 text-slate-600">{row.position.allocationType === "hours" ? `${row.assignment.monthlyHours ?? row.position.monthlyHours ?? row.report?.monthlyHours ?? 0} h/měsíc` : `${row.assignment.fte ?? row.position.fte ?? row.report?.fte ?? 0} úv.`}</td>
         <td className="p-2"><StatusBadge status={row.status}/></td>
         <td className="p-2 text-slate-600">{formatDateTime(row.report?.submittedAt)}</td>
-        <td className="p-2 text-right"><Button variant="secondary" className="px-3 py-1.5" disabled={busy || !row.report} onClick={() => onSelect(row.report)}><Eye className="mr-1 inline" size={16}/>Detail</Button></td>
+        <td className="p-2 text-right"><Button compact variant="secondary" disabled={busy || !row.report} onClick={() => onSelect(row.report)}><Eye className="mr-1 inline" size={16}/>Detail</Button></td>
       </tr>)}</tbody>
     </table>
   </div>;
@@ -221,10 +223,10 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
     } catch (error) { setMessage(error.message); } finally { setBusy(false); }
   };
 
-  const viewSwitch = isProjectManager ? null : <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-300 bg-blue-50 p-1 shadow-md shadow-slate-200/60">
-    <button onClick={() => setView("team")} className={`min-h-9 rounded-md px-3 py-1.5 text-sm font-bold ${view === "team" ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{isDirector ? "Výkazy týmu" : "Přehled týmu"}</button>
-    <button onClick={() => setView("own")} className={`min-h-9 rounded-md px-3 py-1.5 text-sm font-bold ${view === "own" ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}>Můj výkaz</button>
-  </div>;
+  const viewSwitch = isProjectManager ? null : <SectionTabs label="Výkazy práce" value={view} onChange={setView} items={[
+    { value: "team", label: isDirector ? "Výkazy týmu" : "Přehled týmu" },
+    { value: "own", label: "Můj výkaz" },
+  ]}/>;
 
   if (view === "own") {
     return <div className="space-y-3">
@@ -246,20 +248,20 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
     {viewSwitch}
     <Notice notice={notice}/>
     {message && <div className="rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{message}</div>}
-    <Card title={isAdmin ? "Výkazy týmu" : "Kontrola měsíčních výkazů"} subtitle={`${receivedCount} z ${rows.length} očekávaných výkazů je předáno nebo zpracováno.`}>
+    <Card title="Kontrola měsíčních výkazů" subtitle={`${receivedCount} z ${rows.length} očekávaných výkazů je předáno nebo zpracováno.`}>
       <div className="mb-4 grid grid-cols-2 gap-2 sm:max-w-xl">
         <Field label="Měsíc"><Select value={period.month} onChange={(event) => setPeriod((current) => ({ ...current, month: Number(event.target.value) }))}>{MONTHS.map((label, index) => <option key={label} value={index + 1}>{label}</option>)}</Select></Field>
         <Field label="Rok"><Select value={period.year} onChange={(event) => setPeriod((current) => ({ ...current, year: Number(event.target.value) }))}>{Array.from({ length: new Date(project.endDate).getFullYear() - new Date(project.startDate).getFullYear() + 1 }, (_, index) => new Date(project.startDate).getFullYear() + index).map((year) => <option key={year}>{year}</option>)}</Select></Field>
       </div>
-      {!rows.length ? <Empty>{isAdmin ? "Pro tento měsíc nejsou žádné týmové výkazy." : "Nejsou založeni žádní pracovníci s pozicí, pro kterou se vytváří měsíční výkaz."}</Empty> : isAdmin ? <div className="space-y-5">
+      {!rows.length ? <Empty>{isAdmin ? "Pro tento měsíc nejsou žádné týmové výkazy." : "Nejsou založeni žádní pracovníci s pozicí, pro kterou se vytváří měsíční výkaz."}</Empty> : isAdmin ? <div className="space-y-3">
         {pendingRows.length > 0 && <section className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50/60">
           <div className="border-b border-amber-200 px-3 py-2">
-            <h3 className="font-bold text-slate-900">Čeká na vaše schválení ({pendingRows.length})</h3>
+            <h3 className="text-sm font-bold text-slate-900">Čeká na vaše schválení ({pendingRows.length})</h3>
           </div>
           <div className="bg-white px-2"><ReportsTable rows={pendingRows} busy={busy} onSelect={setSelectedReport}/></div>
         </section>}
         <section>
-          <h3 className="mb-2 font-bold text-slate-900">Ostatní výkazy v měsíci ({otherRows.length})</h3>
+          {pendingRows.length > 0 && <h3 className="mb-2 text-sm font-bold text-slate-900">Ostatní výkazy v měsíci ({otherRows.length})</h3>}
           {otherRows.length ? <ReportsTable rows={otherRows} busy={busy} onSelect={setSelectedReport}/> : <Empty>Všechny výkazy nyní čekají na vaše schválení.</Empty>}
         </section>
       </div> : <ReportsTable rows={rows} busy={busy} onSelect={setSelectedReport}/>}

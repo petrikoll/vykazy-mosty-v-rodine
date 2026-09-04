@@ -1,9 +1,11 @@
 const { Readable } = require("node:stream");
 const googleDriveOAuth = require("./googleDriveOAuth.cjs");
+const { recordMap, changesBetween, rowRequest, isDeepStrictEqual } = require("./sheetTransactions.cjs");
 
 const SNAPSHOT_HEADER = "záznam JSON";
 
 const SHEET_HEADERS = {
+  "Historie změn": ["id", "datum", "pracovník", "akce", "typ", "záznam", SNAPSHOT_HEADER],
   "Pracovníci": [
     "id", "jméno", "aplikační role", "celkový úvazek", "aktivní", "pozice JSON",
     "vytvořeno", "aktualizováno", "PIN hash", SNAPSHOT_HEADER,
@@ -249,10 +251,20 @@ async function upsertRow(sheetName, record, valueMapper) {
   if (values.length !== headers.length) {
     throw new Error(`Počet hodnot pro ${sheetName} neodpovídá záhlaví.`);
   }
+  if (rowIndex < 0) {
+    // Google allocates the append row; never calculate it from a stale row count.
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: status.spreadsheetId,
+      range: `${quoteSheetName(sheetName)}!A:${endColumn}`,
+      valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [values] },
+    }, { retry: false });
+    return { synced: true, appended: true };
+  }
   await sheets.spreadsheets.values.update({
     spreadsheetId: status.spreadsheetId,
     range: `${quoteSheetName(sheetName)}!A${targetRow}:${endColumn}${targetRow}`,
-    valueInputOption: "USER_ENTERED",
+    valueInputOption: "RAW",
     requestBody: { values: [values] },
   });
   return { synced: true, row: targetRow };
@@ -260,6 +272,8 @@ async function upsertRow(sheetName, record, valueMapper) {
 
 function valuesForRecord(type, record) {
   switch (type) {
+    case "auditEvent":
+      return [record.id, record.at, record.employeeName, record.action, record.entityType, record.entityId];
     case "employee":
       return [
         record.id, record.name, record.appRole, record.globalFte, record.active !== false,
@@ -309,6 +323,7 @@ function valuesForRecord(type, record) {
 }
 
 const TYPE_TO_SHEET = {
+  auditEvent: "Historie změn",
   employee: "Pracovníci",
   workReport: "Výkazy",
   employeeEvaluation: "Hodnocení zaměstnanců",
@@ -321,6 +336,7 @@ const TYPE_TO_SHEET = {
 };
 
 const TYPE_TO_COLLECTION = {
+  auditEvent: "auditLog",
   employee: "employees",
   workReport: "workReports",
   employeeEvaluation: "employeeEvaluations",
@@ -332,10 +348,17 @@ const TYPE_TO_COLLECTION = {
   methodologyAnswer: "methodologyAnswers",
 };
 
-async function syncRecord(type, record) {
+let sheetWriteQueue = Promise.resolve();
+function queueSheetWrite(operation) {
+  const pending = sheetWriteQueue.then(operation);
+  sheetWriteQueue = pending.catch(() => undefined);
+  return pending;
+}
+
+function syncRecord(type, record) {
   const sheetName = TYPE_TO_SHEET[type];
   if (!sheetName) throw new Error(`Neznámý typ synchronizace: ${type}`);
-  return upsertRow(sheetName, record, (item) => valuesForRecord(type, item));
+  return queueSheetWrite(() => upsertRow(sheetName, record, (item) => valuesForRecord(type, item)));
 }
 
 async function ensureSheets() {
@@ -372,14 +395,17 @@ async function loadDatabaseSnapshot() {
     const rows = response.data.valueRanges?.[index]?.values || [];
     snapshot[TYPE_TO_COLLECTION[type]] = rows.map((row, rowIndex) => {
       const raw = row[snapshotColumn];
-      if (!raw) return null;
+      if (!raw && !row.some((value) => value !== "" && value != null)) return null;
+      if (!raw) throw new Error(`List ${sheetName}, řádek ${rowIndex + 2}: chybí záznam JSON. Načítání bylo zastaveno.`);
       try {
         const record = JSON.parse(raw);
-        return record && typeof record === "object" && record.id ? record : null;
+        if (!record || typeof record !== "object" || !record.id || record.id !== row[0]) throw new Error("ID neodpovídá řádku");
+        return record;
       } catch (error) {
         throw new Error(`List ${sheetName}, řádek ${rowIndex + 2}: uložený záznam JSON není platný (${error.message}).`);
       }
     }).filter(Boolean);
+    recordMap(snapshot[TYPE_TO_COLLECTION[type]]);
   });
   return snapshot;
 }
@@ -392,7 +418,11 @@ async function syncDatabaseSnapshot(database) {
   return { synced: true, records: results.length };
 }
 
-async function deleteRecord(type, recordId) {
+function deleteRecord(type, recordId) {
+  return queueSheetWrite(() => deleteRow(type, recordId));
+}
+
+async function deleteRow(type, recordId) {
   const sheetName = TYPE_TO_SHEET[type];
   if (!sheetName) throw new Error(`Neznámý typ synchronizace: ${type}`);
   const context = await ensureSheet(sheetName);
@@ -406,9 +436,63 @@ async function deleteRecord(type, recordId) {
   if (rowIndex < 0) return { synced: true, deleted: false, reason: "not-found" };
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId: status.spreadsheetId,
-    requestBody: { requests: [{ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: rowIndex + 1, endIndex: rowIndex + 2 } } }] },
+    requestBody: { requests: [rowRequest({ ...context, rowIndex }, null)] },
   });
   return { synced: true, deleted: true, row: rowIndex + 2 };
+}
+
+// All records belonging to a single mutation (including linked plans and audit)
+// are committed in ONE atomic Sheets batch, before the local cache is updated.
+function commitDatabaseChanges(before, after) {
+  return queueSheetWrite(async () => {
+    const changes = changesBetween(before, after, TYPE_TO_COLLECTION);
+    if (!changes.length) return { synced: true, records: 0 };
+    const types = [...new Set(changes.map((change) => change.type))];
+    const contexts = await Promise.all(types.map((type) => ensureSheet(TYPE_TO_SHEET[type])));
+    if (contexts.some((context) => !context)) throw new Error("Google Sheet není připojený. Změna nebyla uložena.");
+    const { sheets, status } = contexts[0];
+    const response = await sheets.spreadsheets.values.batchGet({
+      spreadsheetId: status.spreadsheetId,
+      ranges: types.map((type, index) => `${quoteSheetName(TYPE_TO_SHEET[type])}!A2:${contexts[index].endColumn}`),
+    });
+    const requests = [];
+    for (const change of changes) {
+      const index = types.indexOf(change.type);
+      const context = contexts[index];
+      const rows = response.data.valueRanges?.[index]?.values || [];
+      const matchingRows = rows.map((row, rowIndex) => row[0] === change.id ? rowIndex : -1).filter((value) => value >= 0);
+      if (matchingRows.length > 1) throw new Error("V Sheetu je duplicitní ID. Změna nebyla uložena.");
+      const rowIndex = matchingRows[0] ?? -1;
+      let remote;
+      if (rowIndex >= 0) {
+        const raw = JSON.parse(rows[rowIndex][context.headers.length - 1]);
+        // Apply the same legacy migrations used by storage before comparison.
+        remote = require("./storage.cjs").migrateData({ ...before, [change.collection]: [raw] })[change.collection][0];
+      }
+      if (isDeepStrictEqual(remote, change.after)) continue; // Already committed; safe retry.
+      if (!isDeepStrictEqual(remote, change.before)) {
+        throw new Error("Záznam se mezitím změnil v jiné relaci. Změna nebyla uložena; načtěte aktuální data a zkuste to znovu.");
+      }
+      const values = change.after ? [...valuesForRecord(change.type, change.after), JSON.stringify(change.after)] : null;
+      if (values && values.length !== context.headers.length) throw new Error("Počet hodnot neodpovídá záhlaví Sheetu.");
+      requests.push(rowRequest({ ...context, rowIndex }, values));
+    }
+    if (!requests.length) return { synced: true, records: changes.length };
+    try {
+      await sheets.spreadsheets.batchUpdate({ spreadsheetId: status.spreadsheetId, requestBody: { requests } }, { retry: false });
+    } catch (error) {
+      // An interrupted response may hide a successful commit. Read back, NEVER
+      // blindly retry an append and create duplicates.
+      try {
+        const verified = require("./storage.cjs").migrateData(await loadDatabaseSnapshot());
+        if (changes.every((change) => isDeepStrictEqual(verified[change.collection].find((item) => item.id === change.id), change.after))) {
+          return { synced: true, records: changes.length, verified: true };
+        }
+      } catch { /* Keep the original failure; do not replace it with read errors. */ }
+      throw new Error("Uložení do Google Sheetu se nepodařilo potvrdit. Formulář zůstává otevřený. Před opakováním zkontrolujte, zda záznam již existuje.", { cause: error });
+    }
+    return { synced: true, records: changes.length };
+  });
 }
 
 function escapeDriveQuery(value) {
@@ -500,6 +584,7 @@ module.exports = {
   getStatus,
   ensureSheets,
   loadDatabaseSnapshot,
+  commitDatabaseChanges,
   deleteRecord,
   downloadFile,
   syncDatabaseSnapshot,

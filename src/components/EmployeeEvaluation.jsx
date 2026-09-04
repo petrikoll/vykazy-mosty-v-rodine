@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { confirmUnsavedChanges, useGuardedState } from "../unsavedChanges.jsx";
 import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { api, jsonBody } from "../api.mjs";
 import { Button, Empty, Field, Input, Notice, StatusBadge, Textarea, useTimedNotice } from "./Common.jsx";
@@ -23,14 +24,14 @@ const roleLabel = (role) => role === "manager" ? "Odborný garant" : role === "d
 export default function EmployeeEvaluation({
   employee, actor, year, evaluation, previousEvaluation, previousPlan, plan, onRefresh, onOpenPlan, readOnly = false,
 }) {
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm, resetForm, formGuard] = useGuardedState(emptyForm);
   const [notice, setNotice] = useTimedNotice();
   const [busy, setBusy] = useState(false);
   const locked = evaluation?.status === "closed" && plan?.status === "approved" && !["director", "project_manager"].includes(actor.appRole);
   const editable = !readOnly && !locked;
 
   useEffect(() => {
-    setForm(evaluation ? {
+    resetForm(evaluation ? {
       evaluationDate: evaluation.evaluationDate || today(),
       previousGoalsEvaluation: evaluation.previousGoalsEvaluation || "",
       strengths: evaluation.strengths || "",
@@ -58,6 +59,7 @@ export default function EmployeeEvaluation({
           status,
         }),
       });
+      formGuard.markSaved();
       setNotice({ type: "success", text: status === "closed" ? "Hodnocení bylo uzavřeno a může sloužit jako podklad vzdělávacího plánu." : "Hodnocení bylo uloženo jako koncept." });
       await onRefresh();
     } catch (error) { setNotice({ type: "error", text: error.message }); } finally { setBusy(false); }
@@ -66,7 +68,7 @@ export default function EmployeeEvaluation({
   const display = evaluation || form;
   if (!editable && !evaluation) return <Empty>Hodnocení tohoto pracovníka zatím nebylo vytvořeno.</Empty>;
 
-  return <div className="space-y-3">
+  return <fieldset disabled={busy} className="min-w-0 space-y-3">
     <Notice notice={notice}/>
     <div className="grid gap-2 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-3">
       <div><span className="block text-xs font-semibold text-slate-500">Zaměstnanec</span><strong>{employee.name}</strong></div>
@@ -108,6 +110,6 @@ export default function EmployeeEvaluation({
       <section className="rounded-lg border border-slate-200 p-3"><h3 className="text-xs font-bold uppercase text-slate-500">Profesní cíle</h3><div className="mt-2 space-y-2">{(display.professionalGoals || []).map((goal, index) => <div key={goal.id || index} className="rounded-lg bg-slate-50 p-2 text-sm"><strong>{index + 1}. {goal.text}</strong><span className="mt-0.5 block text-xs text-slate-600">Splnění: {goal.successCriterion}</span></div>)}</div></section>
     </>}
 
-    {evaluation?.status === "closed" && <div className="flex justify-end"><Button onClick={onOpenPlan}>{plan ? "Otevřít vzdělávací plán" : "Vytvořit vzdělávací plán"}<ArrowRight className="ml-1 inline" size={16}/></Button></div>}
-  </div>;
+    {evaluation?.status === "closed" && <div className="flex justify-end"><Button onClick={() => { if (confirmUnsavedChanges()) onOpenPlan(); }}>{plan ? "Otevřít vzdělávací plán" : "Vytvořit vzdělávací plán"}<ArrowRight className="ml-1 inline" size={16}/></Button></div>}
+  </fieldset>;
 }

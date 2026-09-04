@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useId, useMemo, useState } from "react";
+import { useGuardedState } from "../unsavedChanges.jsx";
 import {
   ArrowRight,
   BookOpenCheck,
@@ -10,6 +11,7 @@ import {
   HardDrive,
   Send,
   ShieldCheck,
+  Bell,
 } from "lucide-react";
 import { api, jsonBody } from "../api.mjs";
 import { greetingName } from "../czechVocative.mjs";
@@ -37,10 +39,32 @@ function dateTimeLabel(value) {
   return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat("cs-CZ", { dateStyle: "short", timeStyle: "short" }).format(parsed);
 }
 
+function DashboardSection({ title, count, icon: Icon, tone = "slate", actions, children }) {
+  const titleId = useId();
+  const tones = {
+    blue: { border: "border-blue-300", header: "border-blue-200 bg-blue-50 text-blue-950", badge: "bg-blue-100 text-blue-800" },
+    green: { border: "border-emerald-300", header: "border-emerald-200 bg-emerald-50 text-emerald-950", badge: "bg-emerald-100 text-emerald-800" },
+    slate: { border: "border-slate-300", header: "border-slate-200 bg-slate-100 text-slate-900", badge: "bg-slate-200 text-slate-700" },
+  };
+  const colors = tones[tone];
+  return <section aria-labelledby={titleId} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${colors.border}`}>
+    <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 ${colors.header}`}>
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon className="shrink-0" size={17} aria-hidden="true"/>
+        <h2 id={titleId} className="text-base font-bold">{title}</h2>
+        {count !== undefined && <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${colors.badge}`}>{count}</span>}
+      </div>
+      {actions}
+    </div>
+    <div className="space-y-1.5 p-2">{children}</div>
+  </section>;
+}
+
 function MeetingTaskRow({ task, collaborators, onNavigate, onRefresh }) {
+  const completionId = useId();
   const [open, setOpen] = useState(false);
-  const [completionText, setCompletionText] = useState("");
-  const [recipientIds, setRecipientIds] = useState([]);
+  const [completionText, setCompletionText, resetCompletionText] = useGuardedState("");
+  const [recipientIds, setRecipientIds, resetRecipientIds] = useGuardedState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -56,6 +80,8 @@ function MeetingTaskRow({ task, collaborators, onNavigate, onRefresh }) {
         method: "PATCH",
         body: jsonBody({ completionText, recipientIds }),
       });
+      resetCompletionText("");
+      resetRecipientIds([]);
       setOpen(false);
       await onRefresh();
     } catch (requestError) {
@@ -65,18 +91,20 @@ function MeetingTaskRow({ task, collaborators, onNavigate, onRefresh }) {
     }
   };
 
-  return <div className="border-t border-slate-100 py-2.5 first:border-t-0">
-    <div className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+  return <article className={`rounded-lg border px-2.5 py-2 ${open ? "border-blue-300 bg-blue-50/40" : "border-slate-200 bg-white"}`}>
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 sm:flex-nowrap">
       <div className="min-w-0">
-        <strong className="block text-sm text-slate-900">{task.text}</strong>
-        <span className="mt-0.5 block text-xs text-slate-500">Porada {dateLabel(task.meetingDate)} · termín {dateLabel(task.deadline)}</span>
+        <strong className="block break-words text-sm leading-5 text-slate-900">{task.text}</strong>
+        <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Porada {dateLabel(task.meetingDate)} · termín {dateLabel(task.deadline)}</span>
       </div>
-      <button type="button" className="justify-self-start text-xs font-bold text-blue-700 hover:underline sm:justify-self-auto" onClick={() => onNavigate("meetings")}>Zápis</button>
-      <Button variant={open ? "secondary" : "primary"} className="min-h-8 justify-self-start px-2.5 py-1 text-xs sm:justify-self-auto" onClick={() => { setOpen((value) => !value); setError(""); }}>
-        <ChevronDown className={`mr-1 inline transition ${open ? "rotate-180" : ""}`} size={14}/>Vyřídit
-      </Button>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <button type="button" className="min-h-8 rounded-md px-2 text-xs font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" onClick={() => onNavigate("meetings")}>Zápis</button>
+        <Button compact variant={open ? "secondary" : "primary"} className="inline-flex items-center gap-1" aria-expanded={open} aria-controls={completionId} onClick={() => { setOpen((value) => !value); setError(""); }}>
+          <ChevronDown className={`transition ${open ? "rotate-180" : ""}`} size={14} aria-hidden="true"/>Vyřídit
+        </Button>
+      </div>
     </div>
-    {open && <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/70 p-2.5">
+    {open && <div id={completionId} className="mt-2 border-t border-blue-200 pt-2">
       <label className="block text-xs font-bold text-slate-700">Jak byl úkol vyřízen?
         <Textarea compact rows={2} className="mt-1 min-h-14 bg-white" value={completionText} onChange={(event) => setCompletionText(event.target.value)} placeholder="Stručně napište výsledek nebo předané řešení…"/>
       </label>
@@ -87,22 +115,48 @@ function MeetingTaskRow({ task, collaborators, onNavigate, onRefresh }) {
       {error && <div className="mt-2 text-xs font-semibold text-red-700" role="alert">{error}</div>}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] text-slate-500">Datum splnění a vaše jméno se doplní automaticky.</span>
-        <Button variant="success" className="min-h-8 px-2.5 py-1 text-xs" disabled={busy || !completionText.trim() || !recipientIds.length} onClick={completeTask}><Send className="mr-1 inline" size={14}/>{busy ? "Odesílám…" : "Splnit úkol a odeslat"}</Button>
+        <Button variant="success" compact disabled={busy || !completionText.trim() || !recipientIds.length} onClick={completeTask}><Send className="mr-1 inline" size={14}/>{busy ? "Odesílám…" : "Splnit úkol a odeslat"}</Button>
       </div>
     </div>}
-  </div>;
+  </article>;
+}
+
+function PendingTasks({ tasks, collaborators, onNavigate, onRefresh }) {
+  return <DashboardSection title="Úkoly k vyřízení" count={tasks.length} icon={ClipboardCheck} tone="blue">
+    {tasks.length ? tasks.map((task, index) => <MeetingTaskRow key={`${task.meetingId}-${task.id || index}`} task={task} collaborators={collaborators} onNavigate={onNavigate} onRefresh={onRefresh}/>) : <p className="px-1 py-1 text-sm text-slate-500">Nemáte žádné nevyřízené úkoly z porad.</p>}
+  </DashboardSection>;
 }
 
 function ReceivedTaskResults({ results, onNavigate }) {
   if (!results.length) return null;
-  return <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-md shadow-slate-200/60">
-    <div className="mb-2 flex items-center justify-between gap-2"><h2 className="font-bold text-slate-950">Doručená řešení úkolů</h2><button className="text-xs font-bold text-blue-700 hover:underline" onClick={() => onNavigate("meetings")}>Otevřít porady</button></div>
-    <div>{results.map((task, index) => <article key={task.id || `${task.meetingId}-${index}`} className="border-t border-slate-100 py-2.5 first:border-t-0">
-      <strong className="block text-sm text-slate-900">{task.text}</strong>
-      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{task.completionText}</p>
-      <div className="mt-1 text-xs text-slate-500">Vyřídil/a {task.completedByName || "pracovník"} · {dateTimeLabel(task.completedAt)}</div>
-    </article>)}</div>
-  </section>;
+  return <DashboardSection title="Doručená řešení úkolů" count={results.length} icon={CheckCircle2} tone="green" actions={<button type="button" className="rounded px-1 py-0.5 text-xs font-bold text-emerald-800 hover:underline" onClick={() => onNavigate("meetings")}>Otevřít porady</button>}>
+    {results.map((task, index) => <details key={`${task.meetingId}-${task.id || index}`} className="group rounded-lg border border-emerald-200 bg-white">
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 rounded-lg px-2.5 py-2 hover:bg-emerald-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0">
+          <strong className="line-clamp-2 break-words text-sm leading-5 text-slate-900 group-open:line-clamp-none">{task.text}</strong>
+          <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Vyřídil/a {task.completedByName || "pracovník"} · {dateTimeLabel(task.completedAt)}</span>
+          <span className="mt-0.5 block truncate text-xs text-slate-600 group-open:hidden">{task.completionText || "Bez doplňující zprávy."}</span>
+        </div>
+        <span className="flex min-h-8 shrink-0 items-center gap-1 text-xs font-bold text-emerald-800">Řešení<ChevronDown className="transition group-open:rotate-180" size={14} aria-hidden="true"/></span>
+      </summary>
+      <div className="mx-2.5 border-t border-emerald-100 py-2">
+        <p className="whitespace-pre-wrap break-words text-sm leading-5 text-slate-700">{task.completionText || "Bez doplňující zprávy."}</p>
+      </div>
+    </details>)}
+  </DashboardSection>;
+}
+
+function OtherReminders({ reminders = [], links, onNavigate }) {
+  return <DashboardSection title="Ostatní připomenutí" icon={Bell}>
+    {reminders.length > 0 && <div className="grid gap-1.5 md:grid-cols-2">{reminders.map(({ icon: Icon, ...reminder }, index) => <button type="button" key={`${reminder.target}-${index}`} onClick={() => onNavigate(reminder.target)} className="flex min-w-0 items-start gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left hover:border-blue-300 hover:bg-blue-50/50">
+      <Icon className="mt-0.5 shrink-0 text-slate-500" size={16} aria-hidden="true"/>
+      <span className="min-w-0 flex-1"><strong className="block break-words text-sm leading-5 text-slate-900">{reminder.title}</strong><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{reminder.detail}</span></span>
+      <span className="mt-0.5 hidden shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 sm:inline">{reminder.tone}</span>
+    </button>)}</div>}
+    <div className={`grid grid-cols-2 gap-1.5 ${links.length > 2 ? "xl:grid-cols-4" : ""} ${reminders.length ? "border-t border-slate-200 pt-2" : ""}`}>{links.map(({ id, label, icon: Icon }) => <button type="button" key={id} onClick={() => onNavigate(id)} className="flex min-h-9 min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-left text-xs font-bold text-slate-700 hover:border-blue-300 hover:bg-blue-50">
+      <span className="flex items-center gap-2"><Icon className="shrink-0 text-blue-700" size={15} aria-hidden="true"/>{label}</span><ArrowRight className="shrink-0 text-slate-400" size={14} aria-hidden="true"/>
+    </button>)}</div>
+  </DashboardSection>;
 }
 
 export default function PortalDashboard({ portal, positions, project, onNavigate, onRefresh }) {
@@ -137,19 +191,15 @@ export default function PortalDashboard({ portal, positions, project, onNavigate
 
   if (!leader) {
     const workerLinks = [
-      { id: "reports", label: "Výkazy práce", detail: `Otevřít výkaz za ${periodLabel}`, icon: ClipboardCheck },
-      { id: "education", label: "Vzdělávací plán", detail: "Zobrazit plán a záznamy vzdělávání", icon: GraduationCap },
+      { id: "reports", label: "Výkazy práce", icon: ClipboardCheck },
+      { id: "education", label: "Vzdělávací plán", icon: GraduationCap },
     ];
 
-    return <div className="mx-auto max-w-3xl space-y-5 py-2 sm:py-5">
+    return <div className="mx-auto max-w-5xl space-y-3">
       <h1 className="text-2xl font-bold text-slate-950">Dobrý den, {greetingName(employee.name)}</h1>
-      <div className="grid gap-3 sm:grid-cols-2">{workerLinks.map(({ id, label, detail, icon: Icon }) => <button key={id} onClick={() => onNavigate(id)} className="flex min-h-24 items-center gap-4 rounded-xl border border-slate-300 bg-white p-4 text-left shadow-md shadow-slate-200/60 transition hover:border-blue-400 hover:bg-blue-50 hover:shadow-lg">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-blue-100 text-blue-800"><Icon size={22}/></span>
-        <span className="min-w-0 flex-1"><strong className="block text-base text-slate-950">{label}</strong><span className="mt-1 block text-xs text-slate-500">{detail}</span></span>
-        <ArrowRight className="shrink-0 text-slate-400" size={19}/>
-      </button>)}</div>
-      {assignedMeetingTasks.length > 0 && <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-md shadow-slate-200/60"><div className="mb-1 flex items-center justify-between gap-2"><h2 className="font-bold text-slate-950">Moje úkoly z porad</h2><span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-bold text-blue-800">{assignedMeetingTasks.length}</span></div><div>{assignedMeetingTasks.map((task, index) => <MeetingTaskRow key={task.id || `${task.meetingId}-${index}`} task={task} collaborators={collaborators} onNavigate={onNavigate} onRefresh={onRefresh}/>)}</div></section>}
+      <PendingTasks tasks={assignedMeetingTasks} collaborators={collaborators} onNavigate={onNavigate} onRefresh={onRefresh}/>
       <ReceivedTaskResults results={receivedTaskResults} onNavigate={onNavigate}/>
+      <OtherReminders links={workerLinks} onNavigate={onNavigate}/>
     </div>;
   }
 
@@ -168,13 +218,13 @@ export default function PortalDashboard({ portal, positions, project, onNavigate
     && item.appRole !== "project_manager"
     && (admin || item.appRole !== "director"));
   const missingPlans = employee.appRole === "project_manager" ? 0 : educationPeople.filter((item) => !portal.educationPlans.some((plan) => plan.employeeId === item.id && plan.year === period.year)).length;
-  const tasks = [];
-  if (waitingReview) tasks.push({ icon: ClipboardCheck, title: `${waitingReview} ${waitingReview === 1 ? "výkaz čeká" : "výkazy čekají"} na kontrolu`, detail: `Otevřete předané výkazy za ${periodLabel}.`, target: "reports", tone: "Ke kontrole" });
-  if (ownReturned) tasks.push({ icon: ClipboardCheck, title: `${ownReturned === 1 ? "Váš výkaz byl vrácen" : `${ownReturned} vaše výkazy byly vráceny`} k opravě`, detail: "Přečtěte si poznámku a upravte vykázané činnosti.", target: "reports", tone: "Opravit" });
-  if (ownMissing) tasks.push({ icon: CalendarDays, title: `${ownMissing === 1 ? "Dokončit vlastní výkaz" : `Dokončit ${ownMissing} vlastní výkazy`} za ${periodLabel}`, detail: "Rozpracovaný výkaz se průběžně ukládá v tomto prohlížeči.", target: "reports", tone: "K doplnění" });
-  if (missingReview) tasks.push({ icon: ClipboardCheck, title: `${missingReview} ${missingReview === 1 ? "očekávaný výkaz nebyl předán" : "očekávaných výkazů nebylo předáno"}`, detail: "V přehledu týmu uvidíte konkrétní pracovníky a pozice.", target: "reports", tone: "Čeká se" });
-  if (missingPlans) tasks.push({ icon: GraduationCap, title: `${missingPlans} ${missingPlans === 1 ? "vzdělávací plán není založen" : "vzdělávací plány nejsou založeny"}`, detail: `Doplňte plánování a cíle na rok ${period.year}.`, target: "education", tone: "K doplnění" });
-  if (admin && !portal.google.driveConnected) tasks.push({ icon: HardDrive, title: "Dokončit připojení archivu Google Drive", detail: "Připojení je jednorázové; potom lze ukládat podepsané výkazy.", target: "settings", tone: "Jednorázově" });
+  const reminders = [];
+  if (waitingReview) reminders.push({ icon: ClipboardCheck, title: `${waitingReview} ${waitingReview === 1 ? "výkaz čeká" : "výkazy čekají"} na kontrolu`, detail: `Otevřete předané výkazy za ${periodLabel}.`, target: "reports", tone: "Ke kontrole" });
+  if (ownReturned) reminders.push({ icon: ClipboardCheck, title: `${ownReturned === 1 ? "Váš výkaz byl vrácen" : `${ownReturned} vaše výkazy byly vráceny`} k opravě`, detail: "Přečtěte si poznámku a upravte vykázané činnosti.", target: "reports", tone: "Opravit" });
+  if (ownMissing) reminders.push({ icon: CalendarDays, title: `${ownMissing === 1 ? "Dokončit vlastní výkaz" : `Dokončit ${ownMissing} vlastní výkazy`} za ${periodLabel}`, detail: "Rozpracovaný výkaz se průběžně ukládá v tomto prohlížeči.", target: "reports", tone: "K doplnění" });
+  if (missingReview) reminders.push({ icon: ClipboardCheck, title: `${missingReview} ${missingReview === 1 ? "očekávaný výkaz nebyl předán" : "očekávaných výkazů nebylo předáno"}`, detail: "V přehledu týmu uvidíte konkrétní pracovníky a pozice.", target: "reports", tone: "Čeká se" });
+  if (missingPlans) reminders.push({ icon: GraduationCap, title: `${missingPlans} ${missingPlans === 1 ? "vzdělávací plán není založen" : "vzdělávací plány nejsou založeny"}`, detail: `Doplňte plánování a cíle na rok ${period.year}.`, target: "education", tone: "K doplnění" });
+  if (admin && !portal.google.driveConnected) reminders.push({ icon: HardDrive, title: "Dokončit připojení archivu Google Drive", detail: "Připojení je jednorázové; potom lze ukládat podepsané výkazy.", target: "settings", tone: "Jednorázově" });
 
   const quickActions = [
     { id: "reports", label: "Otevřít výkazy", icon: ClipboardCheck },
@@ -183,29 +233,14 @@ export default function PortalDashboard({ portal, positions, project, onNavigate
     { id: "meetings", label: "Nový zápis z porady", icon: BookOpenCheck },
   ];
 
-  return <div className="space-y-4">
+  return <div className="mx-auto max-w-6xl space-y-3">
     <div>
       <h1 className="text-2xl font-bold text-slate-950">Dobrý den, {greetingName(employee.name)}</h1>
       <p className="mt-1 text-sm text-slate-500">Přehled věcí, které nyní potřebují pozornost.</p>
     </div>
 
-    <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-md shadow-slate-200/60">
-      <h2 className="mb-2 text-base font-bold text-slate-950">Co je potřeba vyřídit</h2>
-      {!tasks.length && !assignedMeetingTasks.length ? <div className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800"><CheckCircle2 size={18}/>Momentálně zde není žádný nevyřízený úkol.</div> : <>
-        <div>{tasks.map(({ icon: Icon, ...task }, index) => <button key={`${task.target}-${index}`} onClick={() => onNavigate(task.target)} className="grid w-full grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-t border-slate-100 py-3 text-left first:border-t-0 hover:bg-slate-50 sm:px-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-700"><Icon size={17}/></span>
-          <span className="min-w-0"><strong className="block text-sm text-slate-900">{task.title}</strong><span className="mt-0.5 block text-xs text-slate-500">{task.detail}</span></span>
-          <span className="hidden rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800 sm:inline">{task.tone}</span>
-        </button>)}</div>
-        {assignedMeetingTasks.length > 0 && <div className={tasks.length ? "mt-1 border-t border-slate-200 pt-1" : ""}>{assignedMeetingTasks.map((task, index) => <MeetingTaskRow key={task.id || `${task.meetingId}-${index}`} task={task} collaborators={collaborators} onNavigate={onNavigate} onRefresh={onRefresh}/>)}</div>}
-      </>}
-    </section>
-
+    <PendingTasks tasks={assignedMeetingTasks} collaborators={collaborators} onNavigate={onNavigate} onRefresh={onRefresh}/>
     <ReceivedTaskResults results={receivedTaskResults} onNavigate={onNavigate}/>
-
-    <section>
-      <h2 className="mb-2 text-base font-bold text-slate-950">Rychlé akce</h2>
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">{quickActions.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => onNavigate(id)} className="flex min-h-12 items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-bold text-slate-800 shadow-md shadow-slate-200/60 hover:border-blue-400 hover:bg-blue-50"><span className="flex items-center gap-2"><Icon className="text-blue-700" size={17}/>{label}</span><ArrowRight className="shrink-0 text-slate-400" size={16}/></button>)}</div>
-    </section>
+    <OtherReminders reminders={reminders} links={quickActions} onNavigate={onNavigate}/>
   </div>;
 }

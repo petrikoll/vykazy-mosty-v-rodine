@@ -8,7 +8,7 @@ const express = require("express");
 const multer = require("multer");
 const webPush = require("web-push");
 
-const { DB_PATH, mutateDb, readDb, writeDb } = require("./server/storage.cjs");
+const { DB_PATH, mutateDb, readDb, refreshDb, configurePrimaryStore } = require("./server/storage.cjs");
 const {
   authMiddleware,
   bearerToken,
@@ -23,6 +23,9 @@ const {
   verifyPin,
 } = require("./server/auth.cjs");
 const googleWorkspace = require("./server/googleWorkspace.cjs");
+if (process.env.GOOGLE_SHEETS_PRIMARY === "true") {
+  configurePrimaryStore({ load: googleWorkspace.loadDatabaseSnapshot, commit: googleWorkspace.commitDatabaseChanges });
+}
 const { allowedEducationPlanStatuses, canManageEducationPlan } = require("./server/educationPolicy.cjs");
 const { canManageEmployeeEvaluation, canViewEmployeeEvaluation } = require("./server/evaluationPolicy.cjs");
 const { fileHash, findDuplicateByFileHash } = require("./server/fileDeduplication.cjs");
@@ -437,6 +440,8 @@ async function sendPushToEmployees(employeeIds, notification) {
 }
 
 async function syncRecordSafe(type, record) {
+  // Primary-mode mutations already committed their complete batch in mutateDb.
+  if (process.env.GOOGLE_SHEETS_PRIMARY === "true") return { synced: true, atomic: true };
   try {
     return await googleWorkspace.syncRecord(type, record);
   } catch (error) {
@@ -454,10 +459,7 @@ async function readPrimaryDatabase({ force = false } = {}) {
   if (!force && Date.now() - primaryDatabaseRefreshedAt < 5000) return readDb();
   if (!primaryDatabaseRefresh) {
     primaryDatabaseRefresh = (async () => {
-      const snapshot = await googleWorkspace.loadDatabaseSnapshot();
-      if (snapshot.employees.length) {
-        await mutateDb(async () => ({ data: snapshot, value: null }));
-      }
+      await refreshDb();
       primaryDatabaseRefreshedAt = Date.now();
       return readDb();
     })().finally(() => {
@@ -468,6 +470,7 @@ async function readPrimaryDatabase({ force = false } = {}) {
 }
 
 async function deleteRecordSafe(type, recordId) {
+  if (process.env.GOOGLE_SHEETS_PRIMARY === "true") return { synced: true, atomic: true };
   try {
     return await googleWorkspace.deleteRecord(type, recordId);
   } catch (error) {
@@ -896,11 +899,29 @@ app.delete("/api/push/subscriptions", requireAuth, async (req, res) => {
   }
 });
 
+const pushTestScheduler = require("./server/pushTest.cjs").createPushTestScheduler(employeeId => sendPushToEmployees([employeeId], {
+  title: "Mosty v rodině · zkouška",
+  body: "Pokud toto vidíte při zavřeném okně portálu, upozornění na tomto zařízení funguje.",
+  url: "/", tag: "push-closed-app-test",
+}));
+
+app.get("/api/push/test", requireAuth, (req, res) => {
+  res.json({ test: pushTestScheduler.status(req.auth.employee.id) });
+});
+
 app.post("/api/push/test", requireAuth, async (req, res) => {
   try {
+    if (!pushConfigured) return res.status(503).json({ error: "Upozornění nejsou na serveru nakonfigurovaná." });
+    if (req.body?.delayed === true) {
+      const db = await readDb();
+      if (!db.pushSubscriptions.some(item => item.employeeId === req.auth.employee.id)) {
+        return res.status(400).json({ error: "Nejprve zapněte upozornění na tomto zařízení." });
+      }
+      return res.status(202).json({ test: pushTestScheduler.start(req.auth.employee.id) });
+    }
     const result = await sendPushToEmployees([req.auth.employee.id], {
       title: "Mosty v rodině",
-      body: "Upozornění jsou zapnutá a dorazí i při zavřené aplikaci.",
+      body: "Zkušební upozornění. Doručení při zavřeném okně ověřte samostatnou zkouškou.",
       url: "/",
       tag: "push-test",
     });

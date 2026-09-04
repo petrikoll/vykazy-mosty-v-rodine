@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { confirmUnsavedChanges, useGuardedState } from "../unsavedChanges.jsx";
 import { ExternalLink, HardDrive, Link2, Pencil, Save, Settings as SettingsIcon, Trash2, Unplug, Users, X } from "lucide-react";
 import { api, jsonBody } from "../api.mjs";
 import { Button, Card, Field, Input, Notice, Select, useTimedNotice } from "./Common.jsx";
@@ -21,10 +22,10 @@ function PositionChoices({ positions, selectedIds, onToggle, lockedIds = [] }) {
 }
 
 export default function Settings({ portal, positions, onRefresh }) {
-  const [employeeForm, setEmployeeForm] = useState({ name: "", globalFte: 1, appRole: "worker", positionIds: [] });
+  const [employeeForm, setEmployeeForm, resetEmployeeForm] = useGuardedState({ name: "", globalFte: 1, appRole: "worker", positionIds: [] });
   const [editingId, setEditingId] = useState("");
-  const [editName, setEditName] = useState("");
-  const [editPositionIds, setEditPositionIds] = useState([]);
+  const [editName, setEditName, resetEditName] = useGuardedState("");
+  const [editPositionIds, setEditPositionIds, resetEditPositionIds] = useGuardedState([]);
   const [notice, setNotice] = useTimedNotice();
   const [busy, setBusy] = useState(false);
   const assignablePositions = useMemo(() => positions.filter((item) => item.active !== false && item.reportRequired), [positions]);
@@ -57,7 +58,7 @@ export default function Settings({ portal, positions, onRefresh }) {
         appRole: employeeForm.appRole,
         assignments: employeeForm.positionIds.map((positionId) => ({ positionId })),
       }) });
-      setEmployeeForm({ name: "", globalFte: 1, appRole: "worker", positionIds: [] });
+      resetEmployeeForm({ name: "", globalFte: 1, appRole: "worker", positionIds: [] });
       setNotice({ type: "success", text: `${roleLabel(employeeForm.appRole)} byl založen s dočasným PINem 1111.` });
       await onRefresh();
     } catch (error) { setNotice({ type: "error", text: error.message }); }
@@ -65,9 +66,10 @@ export default function Settings({ portal, positions, onRefresh }) {
   };
 
   const startEditing = (employee) => {
+    if (!confirmUnsavedChanges()) return;
     setEditingId(employee.id);
-    setEditName(employee.name);
-    setEditPositionIds((employee.assignments || [])
+    resetEditName(employee.name);
+    resetEditPositionIds((employee.assignments || [])
       .filter((assignment) => positions.some((position) => position.id === assignment.positionId && position.reportRequired))
       .map((assignment) => assignment.positionId));
     setNotice(null);
@@ -86,8 +88,8 @@ export default function Settings({ portal, positions, onRefresh }) {
         assignments: editPositionIds.map((positionId) => currentAssignments.get(positionId) || { positionId }),
       }) });
       setEditingId("");
-      setEditName("");
-      setEditPositionIds([]);
+      resetEditName("");
+      resetEditPositionIds([]);
       setNotice({ type: "success", text: `Údaje pracovníka ${editName.trim()} byly uloženy.` });
       await onRefresh();
     } catch (error) { setNotice({ type: "error", text: error.message }); }
@@ -99,7 +101,7 @@ export default function Settings({ portal, positions, onRefresh }) {
     setBusy(true); setNotice(null);
     try {
       const result = await api(`/api/employees/${employee.id}`, { method: "DELETE" });
-      setEditingId(""); setEditName(""); setEditPositionIds([]);
+      setEditingId(""); resetEditName(""); resetEditPositionIds([]);
       setNotice({ type: "success", text: result.archived
         ? `Pracovník ${employee.name} byl odstraněn z aktivních účtů. Jeho dřívější evidence zůstala zachovaná.`
         : `Pracovník ${employee.name} byl úplně odstraněn.` });
@@ -140,40 +142,17 @@ export default function Settings({ portal, positions, onRefresh }) {
     finally { setBusy(false); }
   };
 
-  return <div className="space-y-4">
+  return <fieldset disabled={busy} className="min-w-0 space-y-3">
     <Notice notice={notice}/>
 
-    <Card title="Archiv podepsaných výkazů" subtitle="Google účet připojí Vedoucí služby/programu pouze jednou. Odborný garant potom může ukládat výkazy do stejného archivu bez dalšího přihlášení." actions={<HardDrive size={22} className="text-blue-700"/>}>
-      {portal.google.driveConnected ? <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-        <div><div className="font-bold text-emerald-900">Google Drive je připojený</div><div className="mt-1 text-sm text-emerald-800">Účet: {portal.google.driveAccountEmail}</div><div className="mt-1 text-xs text-emerald-700">Aplikace sama vytváří podsložky podle roku, měsíce a pracovníka.</div></div>
-        <div className="flex flex-wrap gap-2">{portal.google.driveFolderUrl && <a className="inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100" href={portal.google.driveFolderUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-2" size={16}/>Otevřít složku</a>}<Button variant="secondary" disabled={busy} onClick={disconnectDrive}><Unplug className="mr-2" size={16}/>Odpojit</Button></div>
-      </div> : <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <div className="font-bold text-blue-950">Cílový účet: {portal.google.driveAllowedEmail || "není nastaven"}</div>
-        <p className="mt-1 text-sm text-blue-900">Po připojení aplikace sama založí složku „Mosty v rodině – podepsané výkazy“. Není potřeba ji ručně vytvářet ani sdílet se servisním účtem.</p>
-        {!portal.google.driveOAuthConfigured && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Nejdříve je potřeba v Google Cloud doplnit OAuth klienta. Aplikace je na něj již připravená.</p>}
-        <Button className="mt-3" disabled={busy || !portal.google.driveOAuthConfigured} onClick={connectDrive}><Link2 className="mr-2" size={16}/>{busy ? "Připravuji přihlášení…" : "Připojit Google Drive"}</Button>
-      </div>}
-    </Card>
-
-    <Card title="Nastavení pracovníků" subtitle="Tuto část vidí Vedoucí služby/programu a Projektový manažer. Zde zakládají osobní účty a přiřazují k nim projektové pozice." actions={<SettingsIcon size={22} className="text-blue-700"/>}>
-      <div className="grid gap-3 md:grid-cols-3">
-        <Field label="Jméno pracovníka"><Input value={employeeForm.name} onChange={(event) => setEmployeeForm((form) => ({ ...form, name: event.target.value }))}/></Field>
-        <Field label="Typ účtu"><Select value={employeeForm.appRole} onChange={(event) => changeRole(event.target.value)}><option value="worker">Pracovník</option><option value="manager" disabled={managerPositionOccupied}>Odborný garant{managerPositionOccupied ? " · již obsazeno" : ""}</option><option value="project_manager">Projektový manažer · bez výkazu a vzdělávacího plánu</option></Select></Field>
-        <Field label="Celkový úvazek u zaměstnavatele"><Input type="number" min="0" step="0.1" value={employeeForm.globalFte} onChange={(event) => setEmployeeForm((form) => ({ ...form, globalFte: event.target.value }))}/></Field>
-      </div>
-      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Dočasný PIN nového účtu je 1111.</strong> Přihlášení probíhá podle jména a pracovník si PIN následně změní sám.</div>
-      <div className="mt-4"><div className="mb-2 text-sm font-bold text-slate-700">Volné projektové pozice</div><PositionChoices positions={positionsForRole(employeeForm.appRole)} selectedIds={employeeForm.positionIds} lockedIds={employeeForm.appRole === "manager" ? ["expert-guarantor"] : []} onToggle={toggleNewPosition}/><p className="mt-2 text-xs text-slate-500">Pozice, které už má přiřazené jiný aktivní pracovník, se zde nenabízejí.</p></div>
-      <Button className="mt-4" disabled={busy || !employeeForm.name.trim() || (employeeForm.appRole !== "project_manager" && !employeeForm.positionIds.length)} onClick={addEmployee}><Users className="mr-2 inline" size={17}/>Přidat pracovníka</Button>
-    </Card>
-
-    <Card title="Pracovníci a jejich pozice" subtitle="Pozice lze kdykoli doplnit nebo odebrat. Přihlášení zůstává stále pod jedním jménem.">
-      {!managedEmployees.length ? <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Zatím není založen žádný další pracovník.</p> : <div className="grid gap-3">
-        {managedEmployees.map((employee) => <section key={employee.id} className="rounded-xl border border-slate-200 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div><strong>{employee.name}</strong><div className="mt-1 text-sm text-slate-500">{roleLabel(employee.appRole)} · {(employee.assignments || []).map((assignment) => positions.find((position) => position.id === assignment.positionId && position.reportRequired)?.name).filter(Boolean).join(", ") || "bez pozice s výkazem"}</div></div>
+    <Card title="Seznam pracovníků a pozic" subtitle="Pozice lze kdykoli doplnit nebo odebrat. Přihlášení zůstává stále pod jedním jménem.">
+      {!managedEmployees.length ? <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Zatím není založen žádný další pracovník.</p> : <div className="grid gap-2">
+        {managedEmployees.map((employee) => <section key={employee.id} className={`rounded-lg border px-3 py-2.5 ${editingId === employee.id ? "border-blue-300 bg-blue-50/40" : "border-slate-200"}`}>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0"><strong className="text-sm">{employee.name}</strong><div className="mt-0.5 text-xs text-slate-500">{[...new Set([roleLabel(employee.appRole), ...(employee.assignments || []).map((assignment) => positions.find((position) => position.id === assignment.positionId && position.reportRequired)?.name)].filter(Boolean))].join(" · ")}</div></div>
             {editingId === employee.id
-              ? <Button variant="secondary" disabled={busy} onClick={() => { setEditingId(""); setEditName(""); setEditPositionIds([]); }}><X className="mr-1 inline" size={16}/>Zrušit</Button>
-              : <Button variant="secondary" disabled={busy} onClick={() => startEditing(employee)}><Pencil className="mr-1 inline" size={16}/>Upravit pracovníka</Button>}
+              ? <Button compact variant="secondary" disabled={busy} onClick={() => { if (!confirmUnsavedChanges()) return; setEditingId(""); resetEditName(""); resetEditPositionIds([]); }}><X className="mr-1 inline" size={16}/>Zrušit</Button>
+              : <Button compact variant="secondary" disabled={busy} onClick={() => startEditing(employee)}><Pencil className="mr-1 inline" size={16}/>Upravit pracovníka</Button>}
           </div>
           {editingId === employee.id && <div className="mt-3 border-t border-slate-200 pt-3">
             <div className="mb-3 max-w-md"><Field label="Jméno pracovníka"><Input value={editName} onChange={(event) => setEditName(event.target.value)}/></Field></div>
@@ -184,5 +163,28 @@ export default function Settings({ portal, positions, onRefresh }) {
         </section>)}
       </div>}
     </Card>
-  </div>;
+
+    <Card title="Přidat pracovníka" tone="blue" collapsible subtitle="Založte osobní účet a přiřaďte volné projektové pozice." actions={<SettingsIcon size={22} className="text-blue-700"/>}>
+      <div className="grid gap-2 md:grid-cols-3">
+        <Field label="Jméno pracovníka"><Input value={employeeForm.name} onChange={(event) => setEmployeeForm((form) => ({ ...form, name: event.target.value }))}/></Field>
+        <Field label="Typ účtu"><Select value={employeeForm.appRole} onChange={(event) => changeRole(event.target.value)}><option value="worker">Pracovník</option><option value="manager" disabled={managerPositionOccupied}>Odborný garant{managerPositionOccupied ? " · již obsazeno" : ""}</option><option value="project_manager">Projektový manažer · bez výkazu a vzdělávacího plánu</option></Select></Field>
+        <Field label="Celkový úvazek u zaměstnavatele"><Input type="number" min="0" step="0.1" value={employeeForm.globalFte} onChange={(event) => setEmployeeForm((form) => ({ ...form, globalFte: event.target.value }))}/></Field>
+      </div>
+      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Dočasný PIN nového účtu je 1111.</strong> Přihlášení probíhá podle jména a pracovník si PIN následně změní sám.</div>
+      <div className="mt-3"><div className="mb-2 text-sm font-bold text-slate-700">Volné projektové pozice</div><PositionChoices positions={positionsForRole(employeeForm.appRole)} selectedIds={employeeForm.positionIds} lockedIds={employeeForm.appRole === "manager" ? ["expert-guarantor"] : []} onToggle={toggleNewPosition}/><p className="mt-2 text-xs text-slate-500">Pozice, které už má přiřazené jiný aktivní pracovník, se zde nenabízejí.</p></div>
+      <Button className="mt-3" disabled={busy || !employeeForm.name.trim() || (employeeForm.appRole !== "project_manager" && !employeeForm.positionIds.length)} onClick={addEmployee}><Users className="mr-2 inline" size={17}/>Přidat pracovníka</Button>
+    </Card>
+
+    <Card title={portal.google.driveConnected ? "Google Disk · připojeno" : "Připojení Google Disku"} collapsible defaultOpen={!portal.google.driveConnected} subtitle="Google účet připojí Vedoucí služby/programu pouze jednou. Odborný garant potom může ukládat výkazy do stejného archivu bez dalšího přihlášení." actions={<HardDrive size={22} className="text-blue-700"/>}>
+      {portal.google.driveConnected ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+        <div><div className="font-bold text-emerald-900">Google Drive je připojený</div><div className="mt-1 text-sm text-emerald-800">Účet: {portal.google.driveAccountEmail}</div><div className="mt-1 text-xs text-emerald-700">Aplikace sama vytváří podsložky podle roku, měsíce a pracovníka.</div></div>
+        <div className="flex flex-wrap gap-2">{portal.google.driveFolderUrl && <a className="inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100" href={portal.google.driveFolderUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-2" size={16}/>Otevřít složku</a>}<Button variant="secondary" disabled={busy} onClick={disconnectDrive}><Unplug className="mr-2" size={16}/>Odpojit</Button></div>
+      </div> : <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+        <div className="font-bold text-blue-950">Cílový účet: {portal.google.driveAllowedEmail || "není nastaven"}</div>
+        <p className="mt-1 text-sm text-blue-900">Po připojení aplikace sama založí složku „Mosty v rodině – podepsané výkazy“. Není potřeba ji ručně vytvářet ani sdílet se servisním účtem.</p>
+        {!portal.google.driveOAuthConfigured && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Nejdříve je potřeba v Google Cloud doplnit OAuth klienta. Aplikace je na něj již připravená.</p>}
+        <Button className="mt-3" disabled={busy || !portal.google.driveOAuthConfigured} onClick={connectDrive}><Link2 className="mr-2" size={16}/>{busy ? "Připravuji přihlášení…" : "Připojit Google Drive"}</Button>
+      </div>}
+    </Card>
+  </fieldset>;
 }

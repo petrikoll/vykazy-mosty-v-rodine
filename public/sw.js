@@ -1,4 +1,4 @@
-const CACHE_NAME = "mosty-portal-v3";
+const CACHE_NAME = "mosty-portal-v4";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -14,7 +14,7 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+    .then((keys) => Promise.all(keys.filter((key) => key.startsWith("mosty-portal-") && key !== CACHE_NAME).map((key) => caches.delete(key))))
     .then(() => self.clients.claim()));
 });
 
@@ -23,10 +23,15 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith("/api/")) return;
   event.respondWith(fetch(event.request)
     .then((response) => {
-      if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
+      if (response.ok) {
+        const copy = response.clone();
+        event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)));
+      }
       return response;
     })
-    .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
+    .catch(async () => (await caches.match(event.request))
+      || (event.request.mode === "navigate" ? await caches.match("/") : null)
+      || Response.error()));
 });
 
 self.addEventListener("push", (event) => {

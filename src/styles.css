@@ -1,5 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 body {
   margin: 0;
+}
+
+/* Compact, consistently separated rows in on-screen record lists. */
+.record-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.record-table th {
+  border-bottom: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: .75rem;
+}
+
+.record-table td {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.record-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.record-table tbody tr:nth-child(even) {
+  background-color: #f8fafc;
+}
+
+.record-table tbody tr:hover {
+  background-color: #eff6ff;
 }
 
 .splash-screen {

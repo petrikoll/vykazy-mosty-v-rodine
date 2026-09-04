@@ -94,7 +94,7 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
   const rangeLabel = `${formatDate(dateFrom)} – ${formatDate(dateTo)}`;
 
   return <div className="space-y-3">
-    <Card title="Dashboard týmu" subtitle="Souhrn se přepočítává podle zvoleného období; úkoly se řídí termínem splnění." actions={<div className="flex flex-wrap items-end justify-end gap-2">
+    <Card title="Souhrn týmu" subtitle="Souhrn se přepočítává podle zvoleného období; úkoly se řídí termínem splnění." actions={<div className="flex flex-wrap items-end justify-end gap-2">
       <div className="w-36"><Field label="Od"><Input type="date" min={`${YEARS[0]}-01-01`} max={`${YEARS.at(-1)}-12-31`} value={dateFrom} onChange={(event) => updateDateFrom(event.target.value)}/></Field></div>
       <div className="w-36"><Field label="Do"><Input type="date" min={`${YEARS[0]}-01-01`} max={`${YEARS.at(-1)}-12-31`} value={dateTo} onChange={(event) => updateDateTo(event.target.value)}/></Field></div>
       <Button variant="secondary" compact onClick={() => setRange(initialRange())} title="Nastavit celý aktuální rok"><RotateCcw className="mr-1 inline" size={14}/>Celý rok</Button>
@@ -104,7 +104,7 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
 
     <Card title={`Přehled pracovníků · ${rangeLabel}`} subtitle="Vzdělávání se započítá, pokud alespoň jeho část zasahuje do období; týmová supervize se započítá každému účastníkovi.">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[840px] text-left text-sm">
+        <table className="record-table w-full min-w-[840px] text-left text-sm">
           <thead><tr className="border-b border-slate-200 text-xs uppercase text-slate-500"><th className="px-2 py-2">Pracovník a pozice</th><th className="px-2 py-2 text-right">Vzdělávání</th><th className="px-2 py-2 text-right">Supervize</th><th className="px-2 py-2">Vzdělávací plán</th><th className="px-2 py-2">Výkazy práce</th><th className="px-2 py-2 text-right">Úkoly</th></tr></thead>
           <tbody>{rows.map((row) => <tr key={row.employee.id} className="border-b border-slate-100 last:border-0">
             <td className="px-2 py-2.5"><strong className="text-slate-950">{row.employee.name}</strong><div className="mt-0.5 text-xs text-slate-500">{row.positions.join(" · ") || "Bez přiřazené pozice"}</div></td>

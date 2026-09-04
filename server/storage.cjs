@@ -21,6 +21,34 @@ const EMPTY_DATA = {
 };
 
 let mutationQueue = Promise.resolve();
+let primaryStore = null;
+
+// Refresh and writes share one queue. A remote snapshot must never overtake a commit.
+function configurePrimaryStore(store) { primaryStore = store; }
+
+function enqueue(operation) {
+  const pending = mutationQueue.then(operation);
+  mutationQueue = pending.catch(() => undefined);
+  return pending;
+}
+
+async function primaryData() {
+  const local = await readDb();
+  if (!primaryStore) return local;
+  const remote = migrateData(await primaryStore.load());
+  if (local.employees.length && !remote.employees.length) {
+    throw new Error("Google Sheet neobsahuje pracovníky. Ukládání bylo zastaveno, aby nedošlo ke ztrátě dat.");
+  }
+  return remote;
+}
+
+function refreshDb() {
+  return enqueue(async () => {
+    const current = await primaryData();
+    await writeDb(current);
+    return current;
+  });
+}
 
 function migrateData(data) {
   const source = data && typeof data === "object" ? data : {};
@@ -143,15 +171,16 @@ async function writeDb(data) {
 }
 
 async function mutateDb(mutator) {
-  const operation = mutationQueue.then(async () => {
-    const current = await readDb();
+  return enqueue(async () => {
+    const current = await primaryData();
+    const before = structuredClone(current);
     const result = await mutator(current);
-    const nextData = result?.data || current;
+    const nextData = migrateData(result?.data || current);
+    // In primary mode there is no volatile/local-only success or background sync.
+    if (primaryStore) await primaryStore.commit(before, nextData);
     await writeDb(nextData);
     return result?.value;
   });
-  mutationQueue = operation.catch(() => undefined);
-  return operation;
 }
 
-module.exports = { DB_PATH, readDb, writeDb, mutateDb, migrateData };
+module.exports = { DB_PATH, readDb, writeDb, mutateDb, migrateData, refreshDb, configurePrimaryStore };

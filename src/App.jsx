@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { BarChart3, BookOpenCheck, BriefcaseBusiness, CalendarDays, ClipboardList, GraduationCap, KeyRound, LayoutDashboard, LogOut, Settings2, ShieldCheck, X } from "lucide-react";
+import { confirmUnsavedChanges, useGuardedState } from "./unsavedChanges.jsx";
+import { BarChart3, BookOpenCheck, CalendarDays, ClipboardList, GraduationCap, KeyRound, LayoutDashboard, LogOut, Settings2, ShieldCheck, X } from "lucide-react";
 import { api, jsonBody, getToken, setToken } from "./api.mjs";
 import { Button, Card, Field, Input, Select, useTimedNotice } from "./components/Common.jsx";
 import Education from "./components/Education.jsx";
@@ -42,7 +43,7 @@ function AuthScreen({ setup, setupCodeRequired, options, onAuthenticated }) {
 
   return <div className="app-shell-background flex min-h-screen items-center justify-center p-4">
     <main className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-7 shadow-xl">
-      <div className="mb-6 flex items-center gap-3"><div className="rounded-xl bg-blue-800 p-3 text-white"><BriefcaseBusiness size={28}/></div><div><h1 className="text-xl font-bold text-slate-900">Mosty v rodině</h1><p className="text-sm text-slate-500">Personální a projektový portál</p></div></div>
+      <div className="mb-6 flex items-center gap-3"><img className="h-12 w-12 rounded-xl border border-slate-200 object-cover shadow-sm" src="/pwa-icon-192.png" alt=""/><div><h1 className="text-xl font-bold text-slate-900">Mosty v rodině</h1><p className="text-sm text-slate-500">Personální a projektový portál</p></div></div>
       <h2 className="text-lg font-bold">{setup ? "První nastavení" : "Přihlášení"}</h2>
       <p className="mb-5 mt-1 text-sm text-slate-500">{setup ? "Založte první osobní účet Odborného garanta. Dočasný PIN bude 1111." : "Vyberte své jméno a zadejte osobní PIN. Projektová pozice se při přihlášení nevybírá."}</p>
       {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
@@ -55,7 +56,8 @@ function AuthScreen({ setup, setupCodeRequired, options, onAuthenticated }) {
 }
 
 function ChangePinDialog({ onClose, onChanged }) {
-  const [form, setForm] = useState({ currentPin: "", newPin: "", confirmation: "" });
+  const [form, setForm, , pinGuard] = useGuardedState({ currentPin: "", newPin: "", confirmation: "" });
+  const close = () => { if (pinGuard.confirmDiscard()) onClose(); };
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -68,6 +70,7 @@ function ChangePinDialog({ onClose, onChanged }) {
     setBusy(true);
     try {
       await api("/api/auth/change-pin", { method: "POST", body: jsonBody({ currentPin: form.currentPin, newPin: form.newPin }) });
+      pinGuard.markSaved();
       await onChanged();
       onClose();
     } catch (requestError) { setError(requestError.message); }
@@ -76,13 +79,13 @@ function ChangePinDialog({ onClose, onChanged }) {
 
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-labelledby="change-pin-title">
     <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-      <div className="mb-5 flex items-start justify-between gap-4"><div><h2 id="change-pin-title" className="text-lg font-bold">Změnit osobní PIN</h2><p className="mt-1 text-sm text-slate-500">PIN má 4 až 10 číslic a patří vašemu osobnímu účtu bez ohledu na počet pozic.</p></div><button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" type="button" onClick={onClose} aria-label="Zavřít"><X size={20}/></button></div>
+      <div className="mb-5 flex items-start justify-between gap-4"><div><h2 id="change-pin-title" className="text-lg font-bold">Změnit osobní PIN</h2><p className="mt-1 text-sm text-slate-500">PIN má 4 až 10 číslic a patří vašemu osobnímu účtu bez ohledu na počet pozic.</p></div><button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" type="button" onClick={close} aria-label="Zavřít"><X size={20}/></button></div>
       {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Současný PIN"><Input required type="password" inputMode="numeric" pattern="[0-9]{4,10}" autoComplete="current-password" value={form.currentPin} onChange={(e) => setForm((value) => ({ ...value, currentPin: e.target.value }))}/></Field>
         <Field label="Nový PIN"><Input required type="password" inputMode="numeric" pattern="[0-9]{4,10}" autoComplete="new-password" value={form.newPin} onChange={(e) => setForm((value) => ({ ...value, newPin: e.target.value }))}/></Field>
         <Field label="Nový PIN znovu"><Input required type="password" inputMode="numeric" pattern="[0-9]{4,10}" autoComplete="new-password" value={form.confirmation} onChange={(e) => setForm((value) => ({ ...value, confirmation: e.target.value }))}/></Field>
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Zavřít</Button><Button disabled={busy}>{busy ? "Ukládám…" : "Změnit PIN"}</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={close}>Zavřít</Button><Button disabled={busy}>{busy ? "Ukládám…" : "Změnit PIN"}</Button></div>
       </form>
     </div>
   </div>;
@@ -138,8 +141,13 @@ export default function App() {
   }, []);
 
   const logout = async () => {
+    if (!confirmUnsavedChanges()) return;
     try { await api("/api/auth/logout", { method: "POST" }); } catch { /* Session may already be gone. */ }
     setToken(""); setPortal(null); setActive("dashboard"); await boot();
+  };
+
+  const navigate = (page) => {
+    if (page !== active && confirmUnsavedChanges()) setActive(page);
   };
 
   const rememberMethodologyAnswer = (answer) => {
@@ -171,13 +179,13 @@ export default function App() {
     {showPinChange && <ChangePinDialog onClose={() => setShowPinChange(false)} onChanged={refresh}/>}
     <div className="min-h-screen w-full lg:grid lg:grid-cols-[224px_minmax(0,1fr)]">
       <aside className="bg-blue-950 px-3 py-3 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:px-3 lg:py-4">
-        <div className="mb-2 flex items-center gap-3 px-2 lg:mb-5"><div className="rounded-xl bg-white/10 p-2.5"><BriefcaseBusiness size={24}/></div><div><h1 className="font-bold">Mosty v rodině</h1><p className="text-xs text-blue-200">Personální portál</p></div></div>
+        <div className="mb-2 flex items-center gap-3 px-2 lg:mb-5"><img className="h-10 w-10 rounded-xl border border-white/20 object-cover shadow-sm" src="/pwa-icon-192.png" alt=""/><div><h1 className="font-bold">Mosty v rodině</h1><p className="text-xs text-blue-200">Personální portál</p></div></div>
         <nav className="no-scrollbar flex flex-nowrap gap-1 overflow-x-auto pb-1 lg:block lg:overflow-visible lg:pb-0" aria-label="Hlavní nabídka">{navGroups.map((group) => <div key={group.label} className="contents lg:mb-4 lg:block">
           <div className="hidden px-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-blue-300 lg:block">{group.label}</div>
-          {group.items.map((item) => { const Icon = item.icon; return <button key={item.id} onClick={() => setActive(item.id)} className={`flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-bold transition lg:mb-1 lg:w-full ${active === item.id ? "bg-white text-blue-900" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}><Icon size={17}/><span>{item.label}</span></button>; })}
+          {group.items.map((item) => { const Icon = item.icon; return <button key={item.id} onClick={() => navigate(item.id)} className={`flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-bold transition lg:mb-1 lg:w-full ${active === item.id ? "bg-white text-blue-900" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}><Icon size={17}/><span>{item.label}</span></button>; })}
         </div>)}</nav>
         <div className="mt-2 border-t border-white/15 pt-2 lg:mt-auto">
-          {leader && <button onClick={() => setActive("teamDashboard")} className={`mb-2 flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-bold transition ${active === "teamDashboard" ? "bg-white text-blue-900" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}><BarChart3 size={17}/><span>Dashboard týmu</span></button>}
+          {leader && <button onClick={() => navigate("teamDashboard")} className={`mb-2 flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-bold transition ${active === "teamDashboard" ? "bg-white text-blue-900" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}><BarChart3 size={17}/><span>Dashboard týmu</span></button>}
           <div className="hidden px-2 pt-2 text-[11px] text-blue-200 lg:block">{config.project.regNumber}</div>
         </div>
       </aside>
@@ -199,8 +207,8 @@ export default function App() {
         {employee.pinMustChange && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><span><strong>Používáte dočasný PIN 1111.</strong> Nastavte si vlastní.</span><Button variant="secondary" className="min-h-8 py-1 text-xs" onClick={() => setShowPinChange(true)}><KeyRound size={14}/><span className="ml-1.5">Změnit PIN</span></Button></div>}
         {!portal.google.sheetsConfigured && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Google Sheet je připravený, ale aplikace zatím nemá servisní účet.</strong> Do jeho doplnění se záznamy bezpečně ukládají do místní databáze.</div>}
         {active !== "dashboard" && portal.google.sheetsConfigured && !portal.google.driveConfigured && <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900"><strong>Google Sheet je připojený.</strong> Google Drive se připojí jednou v Nastavení.</div>}
-        {active === "dashboard" && <PortalDashboard portal={portal} positions={config.positions} project={config.project} onNavigate={setActive} onRefresh={refresh}/>}
-        {active === "teamDashboard" && leader && <TeamDashboard portal={portal} positions={config.positions} onNavigate={setActive}/>}
+        {active === "dashboard" && <PortalDashboard portal={portal} positions={config.positions} project={config.project} onNavigate={navigate} onRefresh={refresh}/>}
+        {active === "teamDashboard" && leader && <TeamDashboard portal={portal} positions={config.positions} onNavigate={navigate}/>}
         {active === "reports" && (["manager", "director", "project_manager"].includes(employee.appRole)
           ? <ManagerReports portal={portal} positions={config.positions} project={config.project} onRefresh={refresh}/>
           : <WorkReports employee={employee} positions={config.positions} project={config.project} reports={ownReports} onRefresh={refresh}/>)}
