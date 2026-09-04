@@ -181,6 +181,156 @@ function normalizeMeetingTasks(db, tasks, externalParticipantNames = [], existin
   }).filter(Boolean);
 }
 
+function meetingTaskIdentity(value) {
+  return normalizeText(value, 1000)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function meetingTaskEntries(db, { beforeDate = "", excludeMeetingId = "", includeCompleted = false } = {}) {
+  return db.meetings
+    .filter((meeting) => meeting.id !== excludeMeetingId && meeting.status !== "draft" && (!beforeDate || !meeting.date || meeting.date <= beforeDate))
+    .toSorted((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .flatMap((meeting) => (meeting.tasks || []).map((task) => ({ meeting, task })))
+    .filter(({ task }) => includeCompleted || task.status !== "completed");
+}
+
+function findMeetingTaskEntry(db, task, { beforeDate = "", excludeMeetingId = "", sourceMeetingId = "", includeCompleted = false } = {}) {
+  const entries = meetingTaskEntries(db, { beforeDate, excludeMeetingId, includeCompleted });
+  const taskId = normalizeText(task?.id, 100);
+  if (sourceMeetingId && taskId) {
+    const exactReference = entries.find((entry) => entry.meeting.id === sourceMeetingId && entry.task.id === taskId);
+    if (exactReference) return exactReference;
+  }
+  if (taskId) {
+    const exactId = entries.find((entry) => entry.task.id === taskId);
+    if (exactId) return exactId;
+  }
+  const identity = meetingTaskIdentity(task?.text);
+  return identity ? entries.find((entry) => meetingTaskIdentity(entry.task.text) === identity) || null : null;
+}
+
+function mergeMeetingTaskInputs(original, update, { explicit = false } = {}) {
+  const ownerIds = explicit
+    ? [...new Set([...(update?.ownerIds || []), update?.ownerId].filter(Boolean))]
+    : [...new Set([...(original?.ownerIds || []), original?.ownerId, ...(update?.ownerIds || []), update?.ownerId].filter(Boolean))];
+  const externalOwnerNames = explicit
+    ? [...new Set(update?.externalOwnerNames || [])]
+    : [...new Set([...(original?.externalOwnerNames || []), ...(update?.externalOwnerNames || [])])];
+  return {
+    ...original,
+    ...update,
+    id: original?.id || update?.id,
+    text: normalizeText(update?.text, 1000) || original?.text || "",
+    ownerIds,
+    ownerId: ownerIds[0] || "",
+    externalOwnerNames,
+    deadline: normalizeText(update?.deadline, 20) || original?.deadline || "",
+  };
+}
+
+function deduplicateMeetingTaskInputs(tasks = []) {
+  const unique = [];
+  const byIdentity = new Map();
+  let mergedCount = 0;
+  tasks.forEach((task) => {
+    const identity = meetingTaskIdentity(task?.text);
+    if (!identity) return;
+    if (!byIdentity.has(identity)) {
+      byIdentity.set(identity, unique.length);
+      unique.push(task);
+      return;
+    }
+    const index = byIdentity.get(identity);
+    unique[index] = mergeMeetingTaskInputs(unique[index], task);
+    mergedCount += 1;
+  });
+  return { tasks: unique, mergedCount };
+}
+
+function resolveMeetingFollowUpTasks(db, meeting) {
+  return (meeting.followUpTaskRefs || []).map((reference) => {
+    const sourceMeeting = db.meetings.find((item) => item.id === reference.meetingId);
+    const task = (sourceMeeting?.tasks || []).find((item) => item.id === reference.taskId);
+    return task ? { ...task, sourceMeetingId: sourceMeeting.id, sourceMeetingDate: sourceMeeting.date || reference.sourceMeetingDate || "" } : null;
+  }).filter(Boolean);
+}
+
+function applyMeetingTaskContinuity(db, { currentMeeting = null, date = "", tasks = [], followUpTasks = [], externalParticipantNames = [] } = {}) {
+  const currentTasks = currentMeeting?.tasks || [];
+  const currentTaskIds = new Set(currentTasks.map((task) => task.id).filter(Boolean));
+  const references = new Map();
+  const affectedMeetings = new Map();
+  let mergedCount = 0;
+  const rememberReference = (entry) => {
+    references.set(`${entry.meeting.id}:${entry.task.id}`, {
+      meetingId: entry.meeting.id,
+      taskId: entry.task.id,
+      sourceMeetingDate: entry.meeting.date || "",
+    });
+  };
+  const updateReferencedTask = (entry, rawTask, explicit) => {
+    const merged = mergeMeetingTaskInputs(entry.task, rawTask, { explicit });
+    const allowedExternalOwners = [...new Set([...externalParticipantNames, ...(entry.task.externalOwnerNames || [])])];
+    const normalized = normalizeMeetingTasks(db, [merged], allowedExternalOwners, [entry.task])[0];
+    if (!normalized) return;
+    const taskState = (task) => JSON.stringify({
+      text: task.text || "",
+      ownerIds: [...(task.ownerIds || [])].sort(),
+      externalOwnerNames: [...(task.externalOwnerNames || [])].sort(),
+      deadline: task.deadline || "",
+    });
+    if (taskState(entry.task) === taskState(normalized)) return;
+    Object.assign(entry.task, normalized);
+    entry.meeting.updatedAt = now();
+    affectedMeetings.set(entry.meeting.id, entry.meeting);
+  };
+
+  (Array.isArray(followUpTasks) ? followUpTasks : []).forEach((task) => {
+    const entry = findMeetingTaskEntry(db, task, {
+      beforeDate: date,
+      excludeMeetingId: currentMeeting?.id || "",
+      sourceMeetingId: normalizeText(task?.sourceMeetingId, 100),
+      includeCompleted: true,
+    });
+    if (!entry) return;
+    rememberReference(entry);
+    if (entry.task.status !== "completed") updateReferencedTask(entry, task, true);
+  });
+
+  const currentInputs = [];
+  (Array.isArray(tasks) ? tasks : []).forEach((task) => {
+    if (!meetingTaskIdentity(task?.text)) return;
+    if (task?.id && currentTaskIds.has(task.id)) {
+      currentInputs.push(task);
+      return;
+    }
+    const existing = findMeetingTaskEntry(db, task, {
+      beforeDate: date,
+      excludeMeetingId: currentMeeting?.id || "",
+    });
+    if (!existing) {
+      currentInputs.push(task);
+      return;
+    }
+    rememberReference(existing);
+    updateReferencedTask(existing, task, false);
+    mergedCount += 1;
+  });
+
+  const deduplicated = deduplicateMeetingTaskInputs(currentInputs);
+  mergedCount += deduplicated.mergedCount;
+  return {
+    tasks: normalizeMeetingTasks(db, deduplicated.tasks, externalParticipantNames, currentTasks),
+    followUpTaskRefs: [...references.values()],
+    affectedMeetings: [...affectedMeetings.values()],
+    mergedCount,
+  };
+}
+
 function meetingTaskOwnerIds(task) {
   return [...new Set([
     ...(Array.isArray(task?.ownerIds) ? task.ownerIds : []),
@@ -1644,16 +1794,24 @@ app.delete("/api/supervisions/:id", requireAuth, directorOnly, deleteSimpleRecor
 
 app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
   try {
-    const meeting = await mutateDb(async (db) => {
+    const result = await mutateDb(async (db) => {
       const participants = db.employees.filter((item) => (req.body.participantIds || []).includes(item.id));
       const externalParticipantNames = normalizeExternalParticipants(req.body.externalParticipantNames, participants);
+      const date = normalizeText(req.body.date, 20);
+      const taskResult = applyMeetingTaskContinuity(db, {
+        date,
+        tasks: req.body.tasks,
+        followUpTasks: req.body.followUpTasks,
+        externalParticipantNames,
+      });
       const item = {
-        id: makeId("MTG"), date: normalizeText(req.body.date, 20), title: "Porada",
+        id: makeId("MTG"), date, title: "Porada",
         location: "", participantIds: participants.map((item) => item.id),
         externalParticipantNames,
         participantNames: [...participants.map((item) => item.name), ...externalParticipantNames], agenda: "",
         notes: normalizeText(req.body.content || req.body.notes, 40000), decisions: "",
-        tasks: normalizeMeetingTasks(db, req.body.tasks, externalParticipantNames),
+        tasks: taskResult.tasks,
+        followUpTaskRefs: taskResult.followUpTaskRefs,
         status: req.body.status === "submitted" ? "submitted" : "draft",
         createdBy: req.auth.employee.id, createdByName: req.auth.employee.name,
         createdAt: now(), updatedAt: now(),
@@ -1661,17 +1819,22 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
       if (!item.date || !item.notes) throw new Error("Datum a zápis z porady jsou povinné.");
       db.meetings.push(item);
       addAudit(db, req.auth.employee, "create", "meeting", item.id);
-      return { data: db, value: item };
+      return { data: db, value: {
+        meeting: { ...item, followUpTasks: resolveMeetingFollowUpTasks(db, item) },
+        affectedMeetings: taskResult.affectedMeetings,
+        mergedTaskCount: taskResult.mergedCount,
+      } };
     });
-    const sync = await syncRecordSafe("meeting", meeting);
-    res.status(201).json({ meeting, sync });
-    if (meeting.status !== "draft") {
-      const ownerIds = [...new Set((meeting.tasks || []).flatMap(meetingTaskOwnerIds))];
+    const sync = await syncRecordSafe("meeting", result.meeting);
+    const followUpSync = await Promise.all(result.affectedMeetings.map((meeting) => syncRecordSafe("meeting", meeting)));
+    res.status(201).json({ meeting: result.meeting, mergedTaskCount: result.mergedTaskCount, sync, followUpSync });
+    if (result.meeting.status !== "draft") {
+      const ownerIds = [...new Set((result.meeting.tasks || []).flatMap(meetingTaskOwnerIds))];
       void sendPushToEmployees(ownerIds, {
         title: "Nový úkol z porady",
-        body: `V zápisu z ${meeting.date} máte přiřazený nový úkol.`,
+        body: `V zápisu z ${result.meeting.date} máte přiřazený nový úkol.`,
         url: "/?open=meetings",
-        tag: `meeting-task-${meeting.id}`,
+        tag: `meeting-task-${result.meeting.id}`,
       }).catch((error) => console.error("Meeting task notification failed:", error.message));
     }
   } catch (error) {
@@ -1681,7 +1844,7 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
 
 app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
   try {
-    const meeting = await mutateDb(async (db) => {
+    const result = await mutateDb(async (db) => {
       const item = db.meetings.find((entry) => entry.id === req.params.id);
       if (!item) {
         const missing = new Error("Porada nebyla nalezena.");
@@ -1704,27 +1867,40 @@ app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
       const date = normalizeText(req.body.date, 20);
       const notes = normalizeText(req.body.content || req.body.notes, 40000);
       if (!date || !notes) throw new Error("Datum a zápis z porady jsou povinné.");
+      const taskResult = applyMeetingTaskContinuity(db, {
+        currentMeeting: item,
+        date,
+        tasks: req.body.tasks,
+        followUpTasks: Array.isArray(req.body.followUpTasks) ? req.body.followUpTasks : resolveMeetingFollowUpTasks(db, item),
+        externalParticipantNames,
+      });
 
       item.date = date;
       item.participantIds = participants.map((employee) => employee.id);
       item.externalParticipantNames = externalParticipantNames;
       item.participantNames = [...participants.map((employee) => employee.name), ...externalParticipantNames];
       item.notes = notes;
-      item.tasks = normalizeMeetingTasks(db, req.body.tasks, externalParticipantNames, item.tasks || []);
+      item.tasks = taskResult.tasks;
+      item.followUpTaskRefs = taskResult.followUpTaskRefs;
       item.status = req.body.status === "submitted" ? "submitted" : "draft";
       item.updatedAt = now();
       addAudit(db, req.auth.employee, "update", "meeting", item.id);
-      return { data: db, value: item };
+      return { data: db, value: {
+        meeting: { ...item, followUpTasks: resolveMeetingFollowUpTasks(db, item) },
+        affectedMeetings: taskResult.affectedMeetings,
+        mergedTaskCount: taskResult.mergedCount,
+      } };
     });
-    const sync = await syncRecordSafe("meeting", meeting);
-    res.json({ meeting, sync });
-    if (meeting.status !== "draft") {
-      const ownerIds = [...new Set((meeting.tasks || []).flatMap(meetingTaskOwnerIds))];
+    const sync = await syncRecordSafe("meeting", result.meeting);
+    const followUpSync = await Promise.all(result.affectedMeetings.map((meeting) => syncRecordSafe("meeting", meeting)));
+    res.json({ meeting: result.meeting, mergedTaskCount: result.mergedTaskCount, sync, followUpSync });
+    if (result.meeting.status !== "draft") {
+      const ownerIds = [...new Set((result.meeting.tasks || []).flatMap(meetingTaskOwnerIds))];
       void sendPushToEmployees(ownerIds, {
         title: "Úkoly z porady byly aktualizovány",
-        body: `Zkontrolujte své úkoly ze zápisu z ${meeting.date}.`,
+        body: `Zkontrolujte své úkoly ze zápisu z ${result.meeting.date}.`,
         url: "/?open=meetings",
-        tag: `meeting-task-${meeting.id}`,
+        tag: `meeting-task-${result.meeting.id}`,
       }).catch((error) => console.error("Meeting task notification failed:", error.message));
     }
   } catch (error) {

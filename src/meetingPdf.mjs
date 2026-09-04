@@ -6,7 +6,7 @@ pdfMake.addVirtualFileSystem(pdfFonts);
 
 export async function createMeetingPdf(meeting, project) {
   const meetingContent = meetingMinutesFromRecord(meeting);
-  const meetingTasks = meetingTasksFromRecord(meeting);
+  const meetingTasks = [...(meeting.followUpTasks || []), ...meetingTasksFromRecord(meeting)];
   const definition = {
     pageSize: "A4",
     pageMargins: [48, 48, 48, 56],
@@ -23,7 +23,7 @@ export async function createMeetingPdf(meeting, project) {
       { text: "Úkoly", style: "heading" },
       meetingTasks.length ? { table: { headerRows: 1, widths: ["*", 130, 80], body: [
         [{ text: "Úkol", bold: true }, { text: "Pracovník", bold: true }, { text: "Termín", bold: true }],
-        ...meetingTasks.map((task) => [task.text, task.owner || "Nepřiřazeno", task.deadline || "—"]),
+        ...meetingTasks.map((task) => [task.sourceMeetingDate ? `${task.text}\n(pokračuje z porady ${task.sourceMeetingDate})` : task.text, task.owner || "Nepřiřazeno", task.deadline || "—"]),
       ] }, layout: "lightHorizontalLines" } : { text: "Bez úkolů.", color: "#64748B" },
       { text: `ID zápisu: ${meeting.id}`, margin: [0, 24, 0, 0], color: "#64748B", fontSize: 8 },
     ],

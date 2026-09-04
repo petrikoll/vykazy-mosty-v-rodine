@@ -78,6 +78,15 @@ export function normalizeTaskDeadline(value) {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+export function meetingTaskIdentity(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("cs-CZ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 export function meetingMinutesFromRecord(meeting = {}) {
   if (meeting.notes) return meetingMinutesFromContent(meeting.notes);
   return [meeting.agenda, meeting.decisions].filter(Boolean).join("\n\n").trim();
@@ -111,6 +120,35 @@ export function meetingTasksFromRecord(meeting = {}, employees = []) {
       completedByName: task.completedByName || "",
     };
   });
+}
+
+export function unresolvedMeetingTasks(meetings = [], employees = [], { beforeDate = "", excludeMeetingId = "" } = {}) {
+  const seen = new Set();
+  return meetings
+    .filter((meeting) => meeting.id !== excludeMeetingId && meeting.status !== "draft" && (!beforeDate || !meeting.date || meeting.date <= beforeDate))
+    .toSorted((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .flatMap((meeting) => meetingTasksFromRecord(meeting, employees).map((task) => ({
+      ...task,
+      sourceMeetingId: meeting.id,
+      sourceMeetingDate: meeting.date || "",
+    })))
+    .filter((task) => {
+      if (task.status === "completed") return false;
+      const identity = task.id ? `id:${task.id}` : `text:${meetingTaskIdentity(task.text)}`;
+      if (!meetingTaskIdentity(task.text) || seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    });
+}
+
+export function meetingFollowUpTasks(meeting = {}, meetings = [], employees = []) {
+  return (meeting.followUpTaskRefs || []).map((reference) => {
+    const sourceMeeting = meetings.find((item) => item.id === reference.meetingId);
+    const task = sourceMeeting
+      ? meetingTasksFromRecord(sourceMeeting, employees).find((item) => item.id === reference.taskId)
+      : null;
+    return task ? { ...task, sourceMeetingId: sourceMeeting.id, sourceMeetingDate: sourceMeeting.date || reference.sourceMeetingDate || "" } : null;
+  }).filter(Boolean);
 }
 
 export function contentFromLegacyMeeting(meeting = {}) {

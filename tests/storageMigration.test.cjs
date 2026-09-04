@@ -16,7 +16,7 @@ const migrated = migrateData({
   }],
 });
 
-assert.equal(migrated.schemaVersion, 8, "schema is upgraded");
+assert.equal(migrated.schemaVersion, 9, "schema is upgraded");
 assert.deepEqual(migrated.methodologyAnswers, [], "legacy data receives methodology answer history");
 assert.deepEqual(migrated.employees[0].assignments, [], "project manager remains without report assignments");
 for (const task of migrated.meetings[0].tasks) {

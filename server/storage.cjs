@@ -7,7 +7,7 @@ const DB_PATH = process.env.APP_DB_PATH
 const BACKUP_PATH = `${DB_PATH}.backup.json`;
 
 const EMPTY_DATA = {
-  schemaVersion: 8,
+  schemaVersion: 9,
   employees: [],
   workReports: [],
   employeeEvaluations: [],
@@ -66,6 +66,7 @@ function migrateData(data) {
     .trim();
   const meetings = Array.isArray(source.meetings) ? source.meetings.map((meeting, meetingIndex) => ({
     ...meeting,
+    followUpTaskRefs: Array.isArray(meeting.followUpTaskRefs) ? meeting.followUpTaskRefs.filter((reference) => reference?.meetingId && reference?.taskId) : [],
     tasks: Array.isArray(meeting.tasks) ? meeting.tasks.map((task, taskIndex) => {
       const meetingKey = String(meeting.id || `legacy-${meetingIndex + 1}`).replace(/[^a-zA-Z0-9-]/g, "");
       const ownerIds = [...new Set([
@@ -98,7 +99,7 @@ function migrateData(data) {
     }) : [],
   })) : [];
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     employees,
     workReports: Array.isArray(source.workReports) ? source.workReports : [],
     employeeEvaluations,

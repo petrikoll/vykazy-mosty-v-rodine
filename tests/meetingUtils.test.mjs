@@ -5,9 +5,12 @@ import {
   findTaskOwnerId,
   formatMeetingContent,
   meetingMinutesFromContent,
+  meetingFollowUpTasks,
+  meetingTaskIdentity,
   meetingTasksFromRecord,
   normalizeTaskDeadline,
   parseMeetingTasks,
+  unresolvedMeetingTasks,
 } from "../src/meetingUtils.mjs";
 
 const content = formatMeetingContent("Tým projednal další postup.", [
@@ -23,6 +26,7 @@ assert.equal(findExternalTaskOwnerName("Laštovica", ["Petr Laštovica"]), "Petr
 assert.equal(findExternalTaskOwnerName("Novák", ["Jan Novák", "Petr Novák"]), "");
 assert.equal(normalizeTaskDeadline("30. 9. 2026"), "2026-09-30");
 assert.equal(normalizeTaskDeadline("2026-10-02"), "2026-10-02");
+assert.equal(meetingTaskIdentity("  Odeslat PŘÍLOHU č. 1! "), "odeslat prilohu c 1");
 assert.deepEqual(meetingTasksFromRecord({ notes: content }, [{ id: "jana-1", name: "Mgr. Jana Sedlářová" }]), [{
   id: "", text: "Připravit podklady", ownerIds: [], ownerNames: [], externalOwnerNames: [], ownerId: "", owner: "Jana", deadline: "2026-09-30", status: "", completionText: "", completionRecipientIds: [], completionRecipientNames: [], completedAt: "", completedBy: "", completedByName: "",
 }]);
@@ -35,5 +39,13 @@ assert.deepEqual(meetingTasksFromRecord({ tasks: [{
   status: "completed", completionText: "Podklady byly odeslány.", completionRecipientIds: ["manager-1"], completionRecipientNames: ["Vedoucí"],
   completedAt: "2026-09-20T10:30:00.000Z", completedBy: "jana-1", completedByName: "Mgr. Jana Sedlářová",
 }]);
+
+const continuityMeetings = [
+  { id: "meeting-old", date: "2026-09-01", status: "archived", tasks: [{ id: "open-1", text: "Doplnit podklady", ownerIds: ["jana-1"], deadline: "2026-09-10" }] },
+  { id: "meeting-newer", date: "2026-09-02", status: "submitted", tasks: [{ id: "done-1", text: "Hotový úkol", status: "completed" }] },
+  { id: "meeting-draft", date: "2026-09-03", status: "draft", tasks: [{ id: "draft-1", text: "Úkol z konceptu" }] },
+];
+assert.deepEqual(unresolvedMeetingTasks(continuityMeetings, [{ id: "jana-1", name: "Jana" }], { beforeDate: "2026-09-04" }).map((task) => task.id), ["open-1"]);
+assert.deepEqual(meetingFollowUpTasks({ followUpTaskRefs: [{ meetingId: "meeting-old", taskId: "open-1" }] }, continuityMeetings, []).map((task) => task.sourceMeetingId), ["meeting-old"]);
 
 console.log("meeting utils tests passed");

@@ -347,7 +347,7 @@ async function ensureSheets() {
 async function loadDatabaseSnapshot() {
   if (!getStatus().sheetsConfigured) throw new Error("Google Sheets nejsou nakonfigurované jako trvalé úložiště.");
   const snapshot = {
-    schemaVersion: 8,
+    schemaVersion: 9,
     employees: [],
     workReports: [],
     employeeEvaluations: [],
