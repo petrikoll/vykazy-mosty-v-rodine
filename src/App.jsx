@@ -37,7 +37,7 @@ function AuthScreen({ setup, setupCodeRequired, options, onAuthenticated }) {
     } catch (requestError) { setError(requestError.message); } finally { setBusy(false); }
   };
 
-  return <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
+  return <div className="app-shell-background flex min-h-screen items-center justify-center p-4">
     <main className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-7 shadow-xl">
       <div className="mb-6 flex items-center gap-3"><div className="rounded-xl bg-blue-800 p-3 text-white"><BriefcaseBusiness size={28}/></div><div><h1 className="text-xl font-bold text-slate-900">Mosty v rodině</h1><p className="text-sm text-slate-500">Personální a projektový portál</p></div></div>
       <h2 className="text-lg font-bold">{setup ? "První nastavení" : "Přihlášení"}</h2>
@@ -135,7 +135,7 @@ export default function App() {
     setToken(""); setPortal(null); setActive("dashboard"); await boot();
   };
 
-  if (loading || !config) return <div className="flex min-h-screen items-center justify-center bg-slate-100 font-semibold text-slate-600">Načítám portál…</div>;
+  if (loading || !config) return <div className="app-shell-background flex min-h-screen items-center justify-center font-semibold text-slate-600">Načítám portál…</div>;
   if (!portal) return <AuthScreen setup={setup} setupCodeRequired={setupCodeRequired} options={options} onAuthenticated={async () => { await refresh(); setSetup(false); }} />;
 
   const employee = portal.employee;
@@ -150,7 +150,7 @@ export default function App() {
   const roleLabel = employee.appRole === "manager" ? "Odborný garant" : employee.appRole === "director" ? "Vedoucí služby/programu" : "Pracovník";
   const currentPeriod = new Intl.DateTimeFormat("cs-CZ", { month: "long", year: "numeric" }).format(new Date());
 
-  return <div className="min-h-screen bg-slate-100 text-slate-900">
+  return <div className="app-shell-background min-h-screen text-slate-900">
     {showPinChange && <ChangePinDialog onClose={() => setShowPinChange(false)} onChanged={refresh}/>}
     <div className="mx-auto min-h-screen max-w-[1440px] lg:grid lg:grid-cols-[224px_minmax(0,1fr)]">
       <aside className="bg-blue-950 px-3 py-3 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:px-3 lg:py-4">

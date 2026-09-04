@@ -26,11 +26,21 @@ function currentProjectPeriod(project) {
   return { month: selected.getMonth() + 1, year: selected.getFullYear() };
 }
 
+function dateLabel(value) {
+  if (!value) return "bez termínu";
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat("cs-CZ").format(parsed);
+}
+
 export default function PortalDashboard({ portal, positions, project, onNavigate }) {
   const employee = portal.employee;
   const leader = ["manager", "director"].includes(employee.appRole);
   const period = useMemo(() => currentProjectPeriod(project), [project]);
   const periodLabel = `${MONTHS[period.month - 1]} ${period.year}`;
+  const assignedMeetingTasks = useMemo(() => portal.meetings
+    .filter((meeting) => meeting.status !== "draft")
+    .flatMap((meeting) => (meeting.tasks || []).filter((task) => task.ownerId === employee.id).map((task) => ({ ...task, meetingId: meeting.id, meetingDate: meeting.date })))
+    .toSorted((a, b) => (a.deadline || "9999-12-31").localeCompare(b.deadline || "9999-12-31")), [employee.id, portal.meetings]);
 
   const reviewRows = useMemo(() => {
     if (!leader) return [];
@@ -59,6 +69,7 @@ export default function PortalDashboard({ portal, positions, project, onNavigate
         <span className="min-w-0 flex-1"><strong className="block text-base text-slate-950">{label}</strong><span className="mt-1 block text-xs text-slate-500">{detail}</span></span>
         <ArrowRight className="shrink-0 text-slate-400" size={19}/>
       </button>)}</div>
+      {assignedMeetingTasks.length > 0 && <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-md shadow-slate-200/60"><div className="mb-2 flex items-center justify-between gap-2"><h2 className="font-bold text-slate-950">Moje úkoly z porad</h2><button className="text-xs font-bold text-blue-700 hover:underline" onClick={() => onNavigate("meetings")}>Otevřít porady</button></div><div>{assignedMeetingTasks.map((task, index) => <button key={task.id || `${task.meetingId}-${index}`} onClick={() => onNavigate("meetings")} className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-t border-slate-100 py-2.5 text-left first:border-t-0 hover:bg-slate-50"><span className="text-sm font-semibold text-slate-900">{task.text}</span><span className="whitespace-nowrap text-xs font-bold text-slate-500">do {dateLabel(task.deadline)}</span></button>)}</div></section>}
     </div>;
   }
 
@@ -83,6 +94,7 @@ export default function PortalDashboard({ portal, positions, project, onNavigate
   if (ownMissing) tasks.push({ icon: CalendarDays, title: `${ownMissing === 1 ? "Dokončit vlastní výkaz" : `Dokončit ${ownMissing} vlastní výkazy`} za ${periodLabel}`, detail: "Rozpracovaný výkaz se průběžně ukládá v tomto prohlížeči.", target: "reports", tone: "K doplnění" });
   if (missingReview) tasks.push({ icon: ClipboardCheck, title: `${missingReview} ${missingReview === 1 ? "očekávaný výkaz nebyl předán" : "očekávaných výkazů nebylo předáno"}`, detail: "V přehledu týmu uvidíte konkrétní pracovníky a pozice.", target: "reports", tone: "Čeká se" });
   if (missingPlans) tasks.push({ icon: GraduationCap, title: `${missingPlans} ${missingPlans === 1 ? "vzdělávací plán není založen" : "vzdělávací plány nejsou založeny"}`, detail: `Doplňte plánování a cíle na rok ${period.year}.`, target: "education", tone: "K doplnění" });
+  assignedMeetingTasks.forEach((task) => tasks.push({ icon: BookOpenCheck, title: task.text, detail: `Úkol z porady ${dateLabel(task.meetingDate)} · termín ${dateLabel(task.deadline)}`, target: "meetings", tone: task.deadline ? `Do ${dateLabel(task.deadline)}` : "Bez termínu" }));
   if (employee.appRole === "director" && !portal.google.driveConnected) tasks.push({ icon: HardDrive, title: "Dokončit připojení archivu Google Drive", detail: "Připojení je jednorázové; potom lze ukládat podepsané výkazy.", target: "settings", tone: "Jednorázově" });
 
   const quickActions = [

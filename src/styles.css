@@ -2,6 +2,16 @@ body {
   margin: 0;
 }
 
+.app-shell-background {
+  background-color: #f4f0e9;
+  background-image:
+    linear-gradient(rgba(248, 250, 252, 0.72), rgba(248, 250, 252, 0.72)),
+    url("/app-background.webp");
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
 .no-scrollbar {
   scrollbar-width: none;
 }

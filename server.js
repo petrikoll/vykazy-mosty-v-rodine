@@ -80,6 +80,44 @@ const exportName = (value) =>
     .replace(/[^A-Za-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
 
+function normalizeMeetingTasks(db, tasks) {
+  if (!Array.isArray(tasks)) return [];
+  return tasks.slice(0, 100).map((task) => {
+    const text = normalizeText(task?.text, 1000);
+    if (!text) return null;
+    let owner = db.employees.find((employee) => employee.active !== false && employee.id === normalizeText(task?.ownerId, 100));
+    if (!owner && task?.owner) {
+      const requestedName = slugify(task.owner).replace(/^(mgr|bc|ing|arch|phdr|mudr|judr|rndr|doc|prof)-/, "");
+      const matches = db.employees.filter((employee) => {
+        const employeeName = slugify(employee.name).replace(/^(mgr|bc|ing|arch|phdr|mudr|judr|rndr|doc|prof)-/, "");
+        return employee.active !== false && (employeeName === requestedName || employeeName.endsWith(`-${requestedName}`) || requestedName.endsWith(`-${employeeName}`));
+      });
+      if (matches.length === 1) owner = matches[0];
+    }
+    const deadline = normalizeText(task?.deadline, 20);
+    if (deadline && !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) throw new Error(`Termín úkolu „${text}“ nemá platný formát.`);
+    return {
+      id: normalizeText(task?.id, 100) || makeId("TSK"),
+      text,
+      ownerId: owner?.id || "",
+      owner: owner?.name || "",
+      deadline,
+    };
+  }).filter(Boolean);
+}
+
+function normalizeExternalParticipants(names, teamParticipants = []) {
+  if (!Array.isArray(names)) return [];
+  const teamNames = new Set(teamParticipants.map((participant) => slugify(participant.name)));
+  const unique = new Map();
+  names.slice(0, 30).forEach((value) => {
+    const name = normalizeText(value, 150);
+    const key = slugify(name);
+    if (name && key && !teamNames.has(key) && !unique.has(key)) unique.set(key, name);
+  });
+  return [...unique.values()];
+}
+
 function safeSecretEqual(actual, expected) {
   const actualBuffer = Buffer.from(String(actual || ""));
   const expectedBuffer = Buffer.from(String(expected || ""));
@@ -272,6 +310,7 @@ function visiblePortalData(db, employee) {
   const director = employee.appRole === "director";
   const leader = manager || director;
   const isParticipant = (record) => (record.participantIds || []).includes(employee.id);
+  const hasAssignedTask = (record) => (record.tasks || []).some((task) => task.ownerId === employee.id);
   const managerVisibleReports = db.workReports.filter((item) => item.employeeId === employee.id || canReviewReport(db, employee, item));
   return {
     employees: (leader ? db.employees : [employee]).map(publicEmployee),
@@ -286,7 +325,7 @@ function visiblePortalData(db, employee) {
     educationPlans: db.educationPlans.filter((item) => leader || item.employeeId === employee.id),
     educationRecords: db.educationRecords.filter((item) => leader || item.employeeId === employee.id),
     supervisions: db.supervisions.filter((item) => leader || isParticipant(item)),
-    meetings: db.meetings.filter((item) => leader || isParticipant(item) || item.createdBy === employee.id),
+    meetings: db.meetings.filter((item) => leader || isParticipant(item) || hasAssignedTask(item) || item.createdBy === employee.id),
   };
 }
 
@@ -1350,16 +1389,14 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
   try {
     const meeting = await mutateDb(async (db) => {
       const participants = db.employees.filter((item) => (req.body.participantIds || []).includes(item.id));
+      const externalParticipantNames = normalizeExternalParticipants(req.body.externalParticipantNames, participants);
       const item = {
         id: makeId("MTG"), date: normalizeText(req.body.date, 20), title: "Porada",
         location: "", participantIds: participants.map((item) => item.id),
-        participantNames: participants.map((item) => item.name), agenda: "",
+        externalParticipantNames,
+        participantNames: [...participants.map((item) => item.name), ...externalParticipantNames], agenda: "",
         notes: normalizeText(req.body.content || req.body.notes, 40000), decisions: "",
-        tasks: Array.isArray(req.body.tasks) ? req.body.tasks.slice(0, 100).map((task) => ({
-          text: normalizeText(task?.text, 1000),
-          owner: normalizeText(task?.owner, 200),
-          deadline: normalizeText(task?.deadline, 50),
-        })).filter((task) => task.text) : [],
+        tasks: normalizeMeetingTasks(db, req.body.tasks),
         status: req.body.status === "submitted" ? "submitted" : "draft",
         createdBy: req.auth.employee.id, createdByName: req.auth.employee.name,
         createdAt: now(), updatedAt: now(),
@@ -1397,19 +1434,17 @@ app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
       }
 
       const participants = db.employees.filter((employee) => (req.body.participantIds || []).includes(employee.id));
+      const externalParticipantNames = normalizeExternalParticipants(req.body.externalParticipantNames, participants);
       const date = normalizeText(req.body.date, 20);
       const notes = normalizeText(req.body.content || req.body.notes, 40000);
       if (!date || !notes) throw new Error("Datum a zápis z porady jsou povinné.");
 
       item.date = date;
       item.participantIds = participants.map((employee) => employee.id);
-      item.participantNames = participants.map((employee) => employee.name);
+      item.externalParticipantNames = externalParticipantNames;
+      item.participantNames = [...participants.map((employee) => employee.name), ...externalParticipantNames];
       item.notes = notes;
-      item.tasks = Array.isArray(req.body.tasks) ? req.body.tasks.slice(0, 100).map((task) => ({
-        text: normalizeText(task?.text, 1000),
-        owner: normalizeText(task?.owner, 200),
-        deadline: normalizeText(task?.deadline, 50),
-      })).filter((task) => task.text) : [];
+      item.tasks = normalizeMeetingTasks(db, req.body.tasks);
       item.status = req.body.status === "submitted" ? "submitted" : "draft";
       item.updatedAt = now();
       addAudit(db, req.auth.employee, "update", "meeting", item.id);
@@ -1430,7 +1465,7 @@ app.post("/api/ai/meeting-minutes", requireAuth, leaderOnly, async (req, res) =>
   try {
     const result = await callGemini({
       promptText: `Datum porady: ${normalizeText(req.body.date, 30)}\nNeuspořádaný text porady:\n${normalizeText(req.body.content || req.body.notes, 40000)}`,
-      systemInstruction: "Jsi přesný zapisovatel pracovních porad. Z dodaného textu vytvoř přehledný, věcný zápis v češtině a samostatně vytěž úkoly. V zápisu zachovej důležité body, rozhodnutí a závěry. U úkolů uveď odpovědnou osobu a termín pouze tehdy, jsou-li ve vstupu uvedeny. Nevymýšlej fakta, jména ani termíny; nejasnosti uveď ke kontrole.",
+      systemInstruction: "Jsi přesný zapisovatel pracovních porad. Z dodaného textu vytvoř přehledný, věcný zápis v češtině a samostatně vytěž úkoly. V zápisu zachovej důležité body, rozhodnutí a závěry. U úkolů uveď odpovědnou osobu a termín pouze tehdy, jsou-li ve vstupu uvedeny. Každý termín vrať výhradně ve formátu RRRR-MM-DD. Nevymýšlej fakta, jména ani termíny; nejasnosti uveď ke kontrole.",
       responseSchema: {
         type: "OBJECT",
         properties: {
@@ -1475,7 +1510,7 @@ app.post("/api/ai/meeting-import", requireAuth, leaderOnly, upload.single("file"
       model: process.env.GEMINI_DOCUMENT_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash",
       promptText: `Převeď přiložený zápis z porady do strukturovaných polí aplikace. Název souboru: ${normalizeText(req.file.originalname, 300)}.${documentText ? `\n\nText dokumentu:\n${documentText}` : ""}`,
       inlineData,
-      systemInstruction: "Jsi přesný přepisovatel zápisů pracovních porad. Z dokumentu vytěž pouze výslovně uvedené údaje. Nic nevymýšlej. Datum vrať jako RRRR-MM-DD, chybějící údaje ponech prázdné a nejasnosti uveď ke kontrole. Zápis zachovej věcně a bez zbytečného zkrácení.",
+      systemInstruction: "Jsi přesný přepisovatel zápisů pracovních porad. Z dokumentu vytěž pouze výslovně uvedené údaje. Nic nevymýšlej. Datum porady i každý termín úkolu vrať jako RRRR-MM-DD, chybějící údaje ponech prázdné a nejasnosti uveď ke kontrole. Zápis zachovej věcně a bez zbytečného zkrácení.",
       responseSchema: {
         type: "OBJECT",
         properties: {

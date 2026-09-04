@@ -1,11 +1,12 @@
 import pdfMake from "pdfmake/build/pdfmake.js";
 import pdfFonts from "pdfmake/build/vfs_fonts.js";
-import { contentFromLegacyMeeting } from "./meetingUtils.mjs";
+import { meetingMinutesFromRecord, meetingTasksFromRecord } from "./meetingUtils.mjs";
 
 pdfMake.addVirtualFileSystem(pdfFonts);
 
 export async function createMeetingPdf(meeting, project) {
-  const meetingContent = contentFromLegacyMeeting(meeting);
+  const meetingContent = meetingMinutesFromRecord(meeting);
+  const meetingTasks = meetingTasksFromRecord(meeting);
   const definition = {
     pageSize: "A4",
     pageMargins: [48, 48, 48, 56],
@@ -18,7 +19,12 @@ export async function createMeetingPdf(meeting, project) {
         ["Datum", meeting.date], ["Účastníci", (meeting.participantNames || []).join(", ") || "-"],
         ["Zapsal/a", meeting.createdByName || "-"],
       ] }, layout: "lightHorizontalLines" },
-      { text: "Zápis a úkoly", style: "heading" }, { text: meetingContent || "-", preserveLeadingSpaces: true },
+      { text: "Zápis", style: "heading" }, { text: meetingContent || "Bez dalšího zápisu.", preserveLeadingSpaces: true },
+      { text: "Úkoly", style: "heading" },
+      meetingTasks.length ? { table: { headerRows: 1, widths: ["*", 130, 80], body: [
+        [{ text: "Úkol", bold: true }, { text: "Pracovník", bold: true }, { text: "Termín", bold: true }],
+        ...meetingTasks.map((task) => [task.text, task.owner || "Nepřiřazeno", task.deadline || "—"]),
+      ] }, layout: "lightHorizontalLines" } : { text: "Bez úkolů.", color: "#64748B" },
       { text: `ID zápisu: ${meeting.id}`, margin: [0, 24, 0, 0], color: "#64748B", fontSize: 8 },
     ],
     styles: {
