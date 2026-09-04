@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, X } from "lucide-react";
 import { api, jsonBody } from "../api.mjs";
-import questions from "../methodology/quizQuestions.generated.json";
+import questions from "../methodology/quizQuestions.generated.json" with { type: "json" };
 import { METHODOLOGY_TEXTS, QUIZ_SERIES_SIZES } from "../methodology/quizConfig.mjs";
 import {
   calculateQuizStats,
@@ -16,14 +16,15 @@ import FrogMascot from "./FrogMascot.jsx";
 const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function Progress({ stats }) {
-  const label = stats.collecting
-    ? `${stats.answerCount} z 10 odpovědí do prvního vyhodnocení`
-    : stats.nextLevel ? `${stats.progress} % cesty k úrovni ${stats.nextLevel.label}` : "Nejvyšší úroveň";
+  const label = `${stats.coveredCount} z ${stats.questionCount} různých otázek`;
   return <div>
-    <div className="mb-1.5 flex justify-between gap-3 text-xs font-semibold text-slate-600"><span>Postup</span><span>{label}</span></div>
-    <div className="h-2.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label="Postup k další úrovni" aria-valuemin="0" aria-valuemax="100" aria-valuenow={stats.progress}>
+    <div className="mb-1.5 flex justify-between gap-3 text-xs font-semibold text-slate-600"><span>Projití celé databanky</span><span>{label}</span></div>
+    <div className="h-2.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label="Projití celé databanky" aria-valuemin="0" aria-valuemax={stats.questionCount} aria-valuenow={stats.coveredCount} aria-valuetext={label}>
       <div className="h-full rounded-full bg-orange-500 transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${stats.progress}%` }}/>
     </div>
+    <p className="mt-2 text-xs leading-5 text-slate-600">{stats.nextLevel
+      ? `Další ocenění: ${stats.nextLevel.label} — alespoň ${stats.nextLevel.minQuestions} různých otázek a ${stats.nextLevel.min} % správně.`
+      : stats.questionCount ? "Celá databanka projita. Nejvyšší ocenění vyžaduje nejméně 90 % správně." : "Databanka zatím neobsahuje aktivní otázky."}</p>
   </div>;
 }
 
@@ -32,12 +33,12 @@ function LongTermStats({ stats, compact = false }) {
     <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
       <div className="text-xs font-bold uppercase tracking-wide text-blue-700">Aktuální úroveň</div>
       <div className="mt-1 text-xl font-black text-blue-950">{stats.level.label}</div>
-      <div className="mt-1 text-xs text-blue-800">{stats.collecting ? METHODOLOGY_TEXTS.collecting : `${stats.percent} % · ${stats.scoringCount} posledních odpovědí`}</div>
+      <div className="mt-1 text-xs text-blue-800">Ocenění zohledňuje počet různých otázek i správnost odpovědí.</div>
     </div>
     <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
-      <div className="text-xs font-bold uppercase tracking-wide text-orange-800">Dlouhodobá úspěšnost</div>
+      <div className="text-xs font-bold uppercase tracking-wide text-orange-800">Úspěšnost napříč otázkami</div>
       <div className="mt-1 text-xl font-black text-slate-950">{stats.answerCount ? `${stats.percent} %` : "—"}</div>
-      <div className="mt-1 text-xs text-slate-600">{stats.answerCount < 30 ? `Z ${stats.answerCount} odpovědí` : "Z posledních 30 odpovědí"}</div>
+      <div className="mt-1 text-xs text-slate-600">{stats.correct} správně z {stats.scoringCount} probraných otázek. Počítá se poslední odpověď na každou otázku.</div>
     </div>
   </div>;
 }
@@ -68,7 +69,7 @@ function QuizQuestion({ question, index, total, selectedId, onSelect, onConfirm,
   return <div className="mx-auto max-w-4xl">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-wrap gap-2"><span className="methodology-chip">{question.topic}</span><span className="methodology-chip methodology-chip--orange">{question.difficulty}</span></div>
-      <strong className="text-sm text-blue-950">{total === 1 ? "Rychlovka" : `Otázka ${index + 1} ze ${total}`}</strong>
+      <strong className="text-sm text-blue-950">{total === 1 ? "Rychlovka · jedna otázka" : `Otázka ${index + 1} ze ${total} v této sérii`}</strong>
     </div>
     <h1 className="text-balance text-2xl font-black leading-tight text-blue-950 sm:text-3xl">{question.question}</h1>
     <fieldset className="mt-7 space-y-3">
@@ -185,6 +186,7 @@ function MethodologySaverOverlay({ employee, history, onClose, onAnswerSaved }) 
   }, [stage, index]);
 
   const start = (count) => {
+    initialHistoryRef.current = localHistory;
     setSeries(selectQuizQuestions({ questions, history: localHistory, count }));
     setSeriesId(globalThis.crypto?.randomUUID?.() || `SER-${Date.now()}`);
     setIndex(0); setSelectedId(""); setSessionAnswers([]); setFeedback(null); setError(""); setShowLevelUp(false); setStage("question");

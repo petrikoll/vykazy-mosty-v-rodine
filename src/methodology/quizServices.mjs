@@ -1,21 +1,22 @@
 import {
   LONG_TERM_WINDOW,
   METHODOLOGY_LEVELS,
-  MINIMUM_LEVEL_ANSWERS,
   RECENT_QUESTION_LIMIT,
 } from "./quizConfig.mjs";
+import defaultQuestions from "./quizQuestions.generated.json" with { type: "json" };
 
 const timestampValue = (item) => Number.isFinite(Date.parse(item?.timestamp)) ? Date.parse(item.timestamp) : 0;
 const byNewest = (a, b) => timestampValue(b) - timestampValue(a);
 
 export function getLevelForPercent(percent) {
   const bounded = Math.max(0, Math.min(100, Number(percent) || 0));
-  return METHODOLOGY_LEVELS.find((level) => bounded >= level.min && bounded <= level.max) || METHODOLOGY_LEVELS[0];
+  return [...METHODOLOGY_LEVELS].reverse().find((level) => bounded >= level.min) || METHODOLOGY_LEVELS[0];
 }
 
-export function getLevelIndex(percent, answerCount = MINIMUM_LEVEL_ANSWERS) {
-  if (answerCount < MINIMUM_LEVEL_ANSWERS) return 0;
-  return METHODOLOGY_LEVELS.findIndex((level) => level.key === getLevelForPercent(percent).key);
+export function getLevelIndex(percent, coveredCount = 0, questionCount = defaultQuestions.filter(question => question.active !== false).length) {
+  if (!questionCount) return 0;
+  return METHODOLOGY_LEVELS.reduce((current, level, index) =>
+    percent >= level.min && coveredCount >= Math.ceil(questionCount * level.coverage / 100) ? index : current, 0);
 }
 
 function topicSummaries(history) {
@@ -31,23 +32,25 @@ function topicSummaries(history) {
   return [...topics.values()].map((item) => ({ ...item, percent: Math.round((item.correct / item.total) * 100) }));
 }
 
-export function calculateQuizStats(history = []) {
-  const ordered = [...history].sort(byNewest);
-  const scoringAnswers = ordered.length >= LONG_TERM_WINDOW ? ordered.slice(0, LONG_TERM_WINDOW) : ordered;
+export function calculateQuizStats(history = [], questions = defaultQuestions) {
+  const activeIds = new Set(questions.filter(question => question.active !== false).map(question => question.id));
+  const questionCount = activeIds.size;
+  // One latest answer per active question. Repeating familiar questions cannot
+  // increase coverage or push earlier mistakes outside a rolling score window.
+  const ordered = [...history].reverse().sort(byNewest).filter(answer => activeIds.has(answer.questionId));
+  const latestAnswers = new Map();
+  for (const answer of ordered) if (!latestAnswers.has(answer.questionId)) latestAnswers.set(answer.questionId, answer);
+  const scoringAnswers = [...latestAnswers.values()];
   const total = scoringAnswers.length;
   const correct = scoringAnswers.filter((answer) => answer.correct).length;
-  const percent = total ? Math.round((correct / total) * 100) : 0;
-  const collecting = ordered.length < MINIMUM_LEVEL_ANSWERS;
-  const level = collecting ? METHODOLOGY_LEVELS[0] : getLevelForPercent(percent);
-  const levelIndex = METHODOLOGY_LEVELS.findIndex((item) => item.key === level.key);
-  const nextLevel = collecting
-    ? { label: "První vyhodnocení", min: MINIMUM_LEVEL_ANSWERS }
-    : METHODOLOGY_LEVELS[levelIndex + 1] || null;
-  const progress = collecting
-    ? Math.round((ordered.length / MINIMUM_LEVEL_ANSWERS) * 100)
-    : nextLevel
-      ? Math.max(0, Math.min(100, Math.round(((percent - level.min) / (nextLevel.min - level.min)) * 100)))
-      : 100;
+  const exactPercent = total ? (correct / total) * 100 : 0;
+  const percent = Math.round(exactPercent * 10) / 10;
+  const levelIndex = getLevelIndex(exactPercent, total, questionCount);
+  const level = METHODOLOGY_LEVELS[levelIndex];
+  const next = questionCount ? METHODOLOGY_LEVELS[levelIndex + 1] : null;
+  const nextLevel = next ? { ...next, minQuestions: Math.ceil(questionCount * next.coverage / 100) } : null;
+  const collecting = total < Math.ceil(questionCount * METHODOLOGY_LEVELS[1].coverage / 100);
+  const progress = questionCount ? Math.floor(total / questionCount * 100) : 0;
   const topicStats = topicSummaries(scoringAnswers);
   const strongest = [...topicStats].sort((a, b) => b.percent - a.percent || b.total - a.total || a.topic.localeCompare(b.topic, "cs"))[0] || null;
   const criticalWeakness = [...topicStats].filter((item) => item.criticalMisses > 0)
@@ -55,6 +58,8 @@ export function calculateQuizStats(history = []) {
   const weakest = criticalWeakness || [...topicStats].sort((a, b) => a.percent - b.percent || b.total - a.total || a.topic.localeCompare(b.topic, "cs"))[0] || null;
   return {
     answerCount: ordered.length,
+    questionCount,
+    coveredCount: total,
     scoringCount: total,
     correct,
     percent,
@@ -70,10 +75,10 @@ export function calculateQuizStats(history = []) {
   };
 }
 
-export function hasLevelUp(beforeHistory = [], afterHistory = []) {
-  const before = calculateQuizStats(beforeHistory);
-  const after = calculateQuizStats(afterHistory);
-  return after.levelIndex > before.levelIndex && after.answerCount >= MINIMUM_LEVEL_ANSWERS;
+export function hasLevelUp(beforeHistory = [], afterHistory = [], questions = defaultQuestions) {
+  const before = calculateQuizStats(beforeHistory, questions);
+  const after = calculateQuizStats(afterHistory, questions);
+  return after.levelIndex > before.levelIndex;
 }
 
 function shuffled(items, random) {
@@ -108,7 +113,9 @@ export function selectQuizQuestions({ questions = [], history = [], count = 3, r
   const selected = [];
 
   while (selected.length < count) {
-    const candidates = pool.filter((question) => !selected.some((item) => item.id === question.id));
+    const remaining = pool.filter((question) => !selected.some((item) => item.id === question.id));
+    const unseen = remaining.filter(question => !shownCounts.has(question.id));
+    const candidates = unseen.length ? unseen : remaining;
     const usedTopics = new Set(selected.map((item) => item.topic));
     const usedDifficulties = new Set(selected.map((item) => item.difficulty));
     const usedStandards = new Set(selected.map((item) => item.standard));
@@ -127,7 +134,9 @@ export function selectQuizQuestions({ questions = [], history = [], count = 3, r
   }
 
   if (count >= 3 && new Set(selected.map((question) => question.standard)).size === 1) {
-    const replacement = pool.find((question) => question.standard !== selected[0].standard && !selected.some((item) => item.id === question.id));
+    const replacement = pool.find((question) => question.standard !== selected[0].standard
+      && !selected.some((item) => item.id === question.id)
+      && (shownCounts.has(selected.at(-1).id) || !shownCounts.has(question.id)));
     if (replacement) selected[selected.length - 1] = replacement;
   }
 
@@ -144,4 +153,3 @@ export function calculateSeriesSummary(answers = []) {
     weakest: topicSummaries(answers).sort((a, b) => a.percent - b.percent || b.criticalMisses - a.criticalMisses)[0] || null,
   };
 }
-

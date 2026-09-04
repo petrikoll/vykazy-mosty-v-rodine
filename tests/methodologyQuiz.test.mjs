@@ -11,7 +11,7 @@ import {
 
 const answer = (index, overrides = {}) => ({
   id: `a-${index}`,
-  questionId: `q-${index}`,
+  questionId: questions[index % questions.length].id,
   timestamp: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
   selectedAnswerId: `q-${index}-A`,
   correct: true,
@@ -44,10 +44,37 @@ const collecting = calculateQuizStats(Array.from({ length: 9 }, (_, index) => an
 assert.equal(collecting.collecting, true, "up to nine answers remain in collecting mode");
 assert.equal(collecting.level.label, "Nováček", "collecting mode is shown as Nováček");
 
-const lastThirtyHistory = Array.from({ length: 35 }, (_, index) => answer(index, { correct: index >= 5 }));
-const lastThirty = calculateQuizStats(lastThirtyHistory);
-assert.equal(lastThirty.scoringCount, 30, "long-term score uses only the latest 30 answers");
-assert.equal(lastThirty.percent, 100, "older answers outside the last 30 do not affect the score");
+const historyOf = (count, correctCount = count) => Array.from({ length: count }, (_, index) => answer(index, { correct: index < correctCount }));
+const wholeBank = calculateQuizStats(historyOf(60));
+assert.equal(wholeBank.questionCount, 60);
+assert.equal(wholeBank.progress, 100);
+assert.equal(wholeBank.level.key, "methodology-nerd");
+assert.notEqual(calculateQuizStats(historyOf(10)).level.key, "methodology-nerd", "ten answers cannot earn the highest award");
+for (const count of [40, 60]) {
+  const bank = questions.slice(0, count);
+  assert.equal(calculateQuizStats([], bank).questionCount, count, "total follows the active bank");
+  assert.notEqual(calculateQuizStats(historyOf(count - 1), bank).level.key, "methodology-nerd", "every question must be covered");
+  assert.equal(calculateQuizStats(historyOf(count, count * 0.9), bank).level.key, "methodology-nerd", "full coverage and 90% earns the highest award");
+  assert.notEqual(calculateQuizStats(historyOf(count, count * 0.9 - 1), bank).level.key, "methodology-nerd", "full coverage alone is insufficient");
+}
+for (const [count, index] of [[0, 0], [10, 0], [12, 1], [24, 2], [36, 3], [48, 4], [60, 5]]) {
+  assert.equal(calculateQuizStats(historyOf(count)).levelIndex, index, `coverage threshold ${count}`);
+}
+const repeated = calculateQuizStats(Array.from({ length: 40 }, (_, index) => answer(index, { questionId: questions[0].id })));
+assert.equal(repeated.coveredCount, 1, "repeated answers do not inflate coverage");
+assert.equal(repeated.levelIndex, 0);
+const corrected = calculateQuizStats([answer(0, { correct: false }), answer(1, { questionId: questions[0].id })]);
+assert.equal(corrected.coveredCount, 1);
+assert.equal(corrected.correct, 1, "latest answer replaces the previous score");
+const sameTime = calculateQuizStats([answer(0, { correct: false }), answer(0)]);
+assert.equal(sameTime.correct, 1, "last appended answer wins identical timestamps");
+const earlierMistakes = calculateQuizStats(historyOf(35, 30));
+assert.equal(earlierMistakes.scoringCount, 35, "all covered questions count, not only a rolling window");
+assert.equal(earlierMistakes.percent, 85.7);
+const filtered = calculateQuizStats([answer(0), answer(1), answer(2, { questionId: "unknown" })], [{ ...questions[0], active: false }, questions[1]]);
+assert.equal(filtered.questionCount, 1);
+assert.equal(filtered.coveredCount, 1, "inactive and unknown questions are excluded");
+assert.equal(calculateQuizStats(historyOf(10), []).progress, 0);
 
 const criticalStats = calculateQuizStats([
   answer(1, { topic: "GDPR", correct: false, critical: true }),
@@ -56,8 +83,9 @@ const criticalStats = calculateQuizStats([
 ]);
 assert.equal(criticalStats.weakest.topic, "GDPR", "missed critical topic is always included in review priority");
 
-assert.equal(hasLevelUp(Array.from({ length: 10 }, (_, index) => answer(index, { correct: index < 5 })), Array.from({ length: 11 }, (_, index) => answer(index, { correct: index < 6 }))), false, "level-up is not shown without crossing a level boundary");
-assert.equal(hasLevelUp(Array.from({ length: 10 }, (_, index) => answer(index, { correct: index < 5 })), Array.from({ length: 11 }, (_, index) => answer(index, { correct: index < 7 }))), true, "level-up is shown after a real upward boundary crossing");
+assert.equal(hasLevelUp(historyOf(10), historyOf(11)), false, "level-up is not shown without crossing a level boundary");
+assert.equal(hasLevelUp(historyOf(11), historyOf(12)), true, "level-up requires the coverage threshold too");
+assert.equal(hasLevelUp(historyOf(60), historyOf(60, 53)), false, "a lower score is not celebrated");
 
 const inactiveBank = [{ ...questions[0], id: "inactive", active: false }, ...questions.slice(1, 8)];
 const activeSelection = selectQuizQuestions({ questions: inactiveBank, count: 3, random: () => 0.4 });
@@ -80,6 +108,16 @@ const criticalPriority = selectQuizQuestions({
   count: 3,
   random: () => 0,
 });
-assert.ok(criticalPriority.some((item) => item.critical && item.topic === missedCritical.topic), "previously missed critical topic receives selection priority");
+assert.ok(criticalPriority.every(item => ![missedCritical, ...questions.filter(q => q.id !== missedCritical.id).slice(0, 12)].some(past => past.id === item.id)), "unseen questions take priority over repeats");
+
+const traversal = [];
+for (let series = 0; series < 20; series += 1) {
+  const selected = selectQuizQuestions({ questions, history: traversal, count: 3, random: () => 0.25 });
+  for (const question of selected) {
+    assert.ok(!traversal.some(past => past.questionId === question.id), "no repeats until the entire bank is covered");
+    traversal.push(answer(traversal.length, { questionId: question.id }));
+  }
+}
+assert.equal(calculateQuizStats(traversal).coveredCount, 60);
 
 console.log("methodology quiz tests passed");
