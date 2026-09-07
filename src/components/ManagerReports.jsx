@@ -109,7 +109,7 @@ function ReportsTable({ rows, busy, onSelect }) {
 export default function ManagerReports({ portal, positions, project, onRefresh }) {
   const isDirector = portal.employee.appRole === "director";
   const isProjectManager = portal.employee.appRole === "project_manager";
-  const isAdmin = isDirector || isProjectManager;
+  const isAdmin = ["manager", "director", "project_manager"].includes(portal.employee.appRole);
   const [view, setView] = useState("team");
   const [period, setPeriod] = useState(() => defaultPeriod(project));
   const [selectedReport, setSelectedReport] = useState(null);
@@ -239,7 +239,7 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
         onRefresh={onRefresh}
         selfManaged={!isDirector}
         topLevel={isDirector}
-        canDelete={isAdmin}
+        canDelete={true}
       />
     </div>;
   }
@@ -270,7 +270,7 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
 
     <SignedReportUpload
       onRefresh={onRefresh}
-      canOpenDrive={isAdmin}
+      canOpenDrive={isDirector || isProjectManager}
       driveFolderUrl={portal.google.driveFolderUrl}
       title="Hromadné nahrání podepsaných výkazů"
       subtitle={isDirector
@@ -279,6 +279,6 @@ export default function ManagerReports({ portal, positions, project, onRefresh }
           ? "Projektový manažer může nahrát podepsané, již schválené výkazy Odborného garanta. Vlastní výkaz nemá."
         : "Odborný garant může nahrát společný PDF, několik samostatných PDF nebo ZIP. Nabídnou se schválené výkazy pracovníků a vlastní schválený výkaz."}
     />
-    {selectedReport && <ReportDetail report={selectedReport} reviewerRole={portal.employee.appRole} busy={busy} canDelete={isAdmin} canReview={canReviewReport(selectedReport)} onClose={() => setSelectedReport(null)} onDelete={deleteReport} onDownload={download} onPreview={previewSignedReport} onStatusChange={changeStatus}/>}
+    {selectedReport && <ReportDetail report={selectedReport} reviewerRole={portal.employee.appRole} busy={busy} canDelete={true} canReview={canReviewReport(selectedReport)} onClose={() => setSelectedReport(null)} onDelete={deleteReport} onDownload={download} onPreview={previewSignedReport} onStatusChange={changeStatus}/>}
   </div>;
 }

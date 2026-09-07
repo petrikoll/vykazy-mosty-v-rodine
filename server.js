@@ -596,18 +596,19 @@ function assertAssignmentsAvailable(db, assignments, positions, excludedEmployee
   }
 }
 
-function visiblePortalData(db, employee) {
+async function visiblePortalData(db, employee) {
+  const { isEducationEligible } = await import("./src/educationEligibility.mjs");
+  const eligibleIds = new Set(db.employees.filter(person => isEducationEligible(person)).map(person => person.id));
   const manager = employee.appRole === "manager";
   const admin = isAdminRole(employee.appRole);
   const leader = manager || admin;
   const isParticipant = (record) => (record.participantIds || []).includes(employee.id);
   const hasAssignedTask = (record) => (record.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(employee.id));
   const hasReceivedTaskResult = (record) => (record.tasks || []).some((task) => (task.completionRecipientIds || []).includes(employee.id));
-  const managerVisibleReports = db.workReports.filter((item) => item.employeeId === employee.id || canReviewReport(db, employee, item));
   return {
     employees: (leader ? db.employees : [employee]).map(publicEmployee),
     collaborators: db.employees.filter((item) => item.active !== false).map((item) => ({ id: item.id, name: item.name, appRole: item.appRole })),
-    workReports: manager ? managerVisibleReports : admin
+    workReports: leader
       ? db.workReports
       : db.workReports.filter((item) => item.employeeId === employee.id),
     employeeEvaluations: db.employeeEvaluations.filter((item) => {
@@ -615,8 +616,8 @@ function visiblePortalData(db, employee) {
       if (!canViewEmployeeEvaluation(employee, target)) return false;
       return target?.id !== employee.id || item.status === "closed";
     }),
-    educationPlans: db.educationPlans.filter((item) => leader || item.employeeId === employee.id),
-    educationRecords: db.educationRecords.filter((item) => leader || item.employeeId === employee.id),
+    educationPlans: db.educationPlans.filter((item) => eligibleIds.has(item.employeeId) && (leader || item.employeeId === employee.id)),
+    educationRecords: db.educationRecords.filter((item) => eligibleIds.has(item.employeeId) && (leader || item.employeeId === employee.id)),
     supervisions: db.supervisions.filter((item) => leader || isParticipant(item)),
     meetings: db.meetings.filter((item) => leader || isParticipant(item) || hasAssignedTask(item) || hasReceivedTaskResult(item) || item.createdBy === employee.id),
     methodologyAnswers: db.methodologyAnswers.filter((item) => item.employeeId === employee.id),
@@ -824,7 +825,7 @@ app.post("/api/auth/change-pin", requireAuth, async (req, res) => {
 app.get("/api/portal", requireAuth, async (req, res) => {
   try {
     const db = await readPrimaryDatabase();
-    res.json({ employee: publicEmployee(req.auth.employee), ...visiblePortalData(db, req.auth.employee), google: publicGoogleStatus(req.auth.employee) });
+    res.json({ employee: publicEmployee(req.auth.employee), ...await visiblePortalData(db, req.auth.employee), google: publicGoogleStatus(req.auth.employee) });
   } catch (error) {
     res.status(500).json({ error: "Nelze načíst portál.", details: error.message });
   }
@@ -931,7 +932,7 @@ app.post("/api/push/test", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/employees", requireAuth, directorOnly, async (req, res) => {
+app.post("/api/employees", requireAuth, leaderOnly, async (req, res) => {
   try {
     const config = await getConfig();
     const name = normalizeText(req.body?.name, 120);
@@ -989,7 +990,7 @@ app.post("/api/employees", requireAuth, directorOnly, async (req, res) => {
   }
 });
 
-app.patch("/api/employees/:id", requireAuth, directorOnly, async (req, res) => {
+app.patch("/api/employees/:id", requireAuth, leaderOnly, async (req, res) => {
   try {
     const config = await getConfig();
     const employee = await mutateDb(async (db) => {
@@ -1051,7 +1052,7 @@ app.patch("/api/employees/:id", requireAuth, directorOnly, async (req, res) => {
   }
 });
 
-app.delete("/api/employees/:id", requireAuth, directorOnly, async (req, res) => {
+app.delete("/api/employees/:id", requireAuth, leaderOnly, async (req, res) => {
   try {
     const result = await mutateDb(async (db) => {
       const index = db.employees.findIndex((item) => item.id === req.params.id);
@@ -1270,7 +1271,7 @@ app.patch("/api/work-reports/:id/status", requireAuth, reportReviewerOnly, async
   }
 });
 
-app.delete("/api/work-reports/:id", requireAuth, directorOnly, deleteSimpleRecordHandler({
+app.delete("/api/work-reports/:id", requireAuth, leaderOnly, deleteSimpleRecordHandler({
   collection: "workReports", type: "workReport", label: "Výkaz",
 }));
 
@@ -1373,7 +1374,7 @@ app.put("/api/employee-evaluations/:year", requireAuth, leaderOnly, async (req, 
   }
 });
 
-app.delete("/api/employee-evaluations/:id", requireAuth, directorOnly, async (req, res) => {
+app.delete("/api/employee-evaluations/:id", requireAuth, leaderOnly, async (req, res) => {
   try {
     const result = await mutateDb(async (db) => {
       const index = db.employeeEvaluations.findIndex((item) => item.id === req.params.id);
@@ -1410,6 +1411,11 @@ app.put("/api/education-plans/:year", requireAuth, leaderOnly, async (req, res) 
     const result = await mutateDb(async (db) => {
       const employee = db.employees.find((item) => item.id === targetEmployeeId);
       if (!employee) throw new Error("Pracovník nebyl nalezen.");
+      if (!(await import("./src/educationEligibility.mjs")).isEducationEligible(employee)) {
+        const denied = new Error("Vzdělávání je určeno pouze pracovníkům RT v přímé práci na pracovní smlouvu.");
+        denied.status = 403;
+        throw denied;
+      }
       if (!canManageEducationPlan(req.auth.employee, employee)) {
         const denied = new Error("Tento vzdělávací plán nemůžete upravovat.");
         denied.status = 403;
@@ -1528,7 +1534,7 @@ app.put("/api/education-plans/:year", requireAuth, leaderOnly, async (req, res) 
   }
 });
 
-app.delete("/api/education-plans/:id", requireAuth, directorOnly, async (req, res) => {
+app.delete("/api/education-plans/:id", requireAuth, leaderOnly, async (req, res) => {
   try {
     const result = await mutateDb(async (db) => {
       const index = db.educationPlans.findIndex((item) => item.id === req.params.id);
@@ -1585,6 +1591,11 @@ app.post("/api/education-records", requireAuth, leaderOnly, upload.single("certi
     const result = await mutateDb(async (db) => {
       const employee = db.employees.find((item) => item.id === targetEmployeeId);
       if (!employee) throw new Error("Pracovník nebyl nalezen.");
+      if (!(await import("./src/educationEligibility.mjs")).isEducationEligible(employee)) {
+        const denied = new Error("Vzdělávání je určeno pouze pracovníkům RT v přímé práci na pracovní smlouvu.");
+        denied.status = 403;
+        throw denied;
+      }
       if (!canManageEducationPlan(req.auth.employee, employee)) {
         const denied = new Error("Vzdělávání tohoto pracovníka nemůžete upravovat.");
         denied.status = 403;
@@ -1708,6 +1719,11 @@ app.patch("/api/education-records/:id/link", requireAuth, leaderOnly, async (req
         throw missing;
       }
       const employee = db.employees.find((item) => item.id === record.employeeId);
+      if (!(await import("./src/educationEligibility.mjs")).isEducationEligible(employee)) {
+        const denied = new Error("Vzdělávání je určeno pouze pracovníkům RT v přímé práci na pracovní smlouvu.");
+        denied.status = 403;
+        throw denied;
+      }
       if (!canManageEducationPlan(req.auth.employee, employee)) {
         const denied = new Error("Vzdělávání tohoto pracovníka nemůžete upravovat.");
         denied.status = 403;
@@ -1744,7 +1760,7 @@ app.patch("/api/education-records/:id/link", requireAuth, leaderOnly, async (req
   }
 });
 
-app.delete("/api/education-records/:id", requireAuth, directorOnly, async (req, res) => {
+app.delete("/api/education-records/:id", requireAuth, leaderOnly, async (req, res) => {
   try {
     const result = await mutateDb(async (db) => {
       const index = db.educationRecords.findIndex((item) => item.id === req.params.id);
@@ -1809,7 +1825,7 @@ app.post("/api/supervisions", requireAuth, leaderOnly, async (req, res) => {
   }
 });
 
-app.delete("/api/supervisions/:id", requireAuth, directorOnly, deleteSimpleRecordHandler({
+app.delete("/api/supervisions/:id", requireAuth, leaderOnly, deleteSimpleRecordHandler({
   collection: "supervisions", type: "supervision", label: "Záznam supervize",
 }));
 
@@ -1995,7 +2011,7 @@ app.patch("/api/meetings/:meetingId/tasks/:taskId/complete", requireAuth, async 
   }
 });
 
-app.delete("/api/meetings/:id", requireAuth, directorOnly, deleteSimpleRecordHandler({
+app.delete("/api/meetings/:id", requireAuth, leaderOnly, deleteSimpleRecordHandler({
   collection: "meetings", type: "meeting", label: "Zápis z porady",
 }));
 

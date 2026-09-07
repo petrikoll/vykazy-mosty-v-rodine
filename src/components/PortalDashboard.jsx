@@ -1,3 +1,4 @@
+import { isEducationEligible } from "../educationEligibility.mjs";
 import React, { useId, useMemo, useState } from "react";
 import { useGuardedState } from "../unsavedChanges.jsx";
 import {
@@ -192,7 +193,7 @@ export default function PortalDashboard({ portal, positions, project, onNavigate
   if (!leader) {
     const workerLinks = [
       { id: "reports", label: "Výkazy práce", icon: ClipboardCheck },
-      { id: "education", label: "Vzdělávací plán", icon: GraduationCap },
+      ...(isEducationEligible(employee, positions) ? [{ id: "education", label: "Vzdělávací plán", icon: GraduationCap }] : []),
     ];
 
     return <div className="mx-auto max-w-5xl space-y-3">
@@ -214,7 +215,7 @@ export default function PortalDashboard({ portal, positions, project, onNavigate
   const waitingReview = reviewRows.filter((item) => item.report?.status === "submitted").length;
   const missingReview = reviewRows.filter((item) => !item.report).length;
 
-  const educationPeople = portal.employees.filter((item) => item.active !== false
+  const educationPeople = portal.employees.filter((item) => isEducationEligible(item, positions)
     && item.appRole !== "project_manager"
     && (admin || item.appRole !== "director"));
   const missingPlans = employee.appRole === "project_manager" ? 0 : educationPeople.filter((item) => !portal.educationPlans.some((plan) => plan.employeeId === item.id && plan.year === period.year)).length;

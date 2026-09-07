@@ -9,7 +9,7 @@ const TYPE_LABEL = { individual: "Individuální", team: "Týmová" };
 
 export default function Supervisions({ employee, employees, records, onRefresh }) {
   const isLeader = ["manager", "director", "project_manager"].includes(employee.appRole);
-  const isAdmin = ["director", "project_manager"].includes(employee.appRole);
+  const isAdmin = ["manager", "director", "project_manager"].includes(employee.appRole);
   const [view, setView] = useState("records");
   const [form, setForm, resetForm, formGuard] = useGuardedState({ date: "", type: "team", supervisor: "", timeFrom: "", timeTo: "", participantIds: isLeader ? [] : [employee.id] });
   const [notice, setNotice] = useTimedNotice();

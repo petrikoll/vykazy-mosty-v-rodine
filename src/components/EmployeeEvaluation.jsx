@@ -110,6 +110,6 @@ export default function EmployeeEvaluation({
       <section className="rounded-lg border border-slate-200 p-3"><h3 className="text-xs font-bold uppercase text-slate-500">Profesní cíle</h3><div className="mt-2 space-y-2">{(display.professionalGoals || []).map((goal, index) => <div key={goal.id || index} className="rounded-lg bg-slate-50 p-2 text-sm"><strong>{index + 1}. {goal.text}</strong><span className="mt-0.5 block text-xs text-slate-600">Splnění: {goal.successCriterion}</span></div>)}</div></section>
     </>}
 
-    {evaluation?.status === "closed" && <div className="flex justify-end"><Button onClick={() => { if (confirmUnsavedChanges()) onOpenPlan(); }}>{plan ? "Otevřít vzdělávací plán" : "Vytvořit vzdělávací plán"}<ArrowRight className="ml-1 inline" size={16}/></Button></div>}
+    {evaluation?.status === "closed" && onOpenPlan && <div className="flex justify-end"><Button onClick={() => { if (confirmUnsavedChanges()) onOpenPlan(); }}>{plan ? "Otevřít vzdělávací plán" : "Vytvořit vzdělávací plán"}<ArrowRight className="ml-1 inline" size={16}/></Button></div>}
   </fieldset>;
 }

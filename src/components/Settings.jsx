@@ -31,7 +31,7 @@ export default function Settings({ portal, positions, onRefresh }) {
   const assignablePositions = useMemo(() => positions.filter((item) => item.active !== false && item.reportRequired), [positions]);
   const managedEmployees = portal.employees.filter((item) => item.id !== portal.employee.id
     && item.active !== false
-    && !(portal.employee.appRole === "project_manager" && item.appRole === "director"));
+    && item.appRole !== "director");
   const occupiedPositionIds = (excludedEmployeeId = "") => new Set(portal.employees
     .filter((item) => item.active !== false && item.id !== excludedEmployeeId)
     .flatMap((item) => (item.assignments || []).map((assignment) => assignment.positionId)));
@@ -178,12 +178,12 @@ export default function Settings({ portal, positions, onRefresh }) {
     <Card title={portal.google.driveConnected ? "Google Disk · připojeno" : "Připojení Google Disku"} collapsible defaultOpen={!portal.google.driveConnected} subtitle="Google účet připojí Vedoucí služby/programu pouze jednou. Odborný garant potom může ukládat výkazy do stejného archivu bez dalšího přihlášení." actions={<HardDrive size={22} className="text-blue-700"/>}>
       {portal.google.driveConnected ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
         <div><div className="font-bold text-emerald-900">Google Drive je připojený</div><div className="mt-1 text-sm text-emerald-800">Účet: {portal.google.driveAccountEmail}</div><div className="mt-1 text-xs text-emerald-700">Aplikace sama vytváří podsložky podle roku, měsíce a pracovníka.</div></div>
-        <div className="flex flex-wrap gap-2">{portal.google.driveFolderUrl && <a className="inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100" href={portal.google.driveFolderUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-2" size={16}/>Otevřít složku</a>}<Button variant="secondary" disabled={busy} onClick={disconnectDrive}><Unplug className="mr-2" size={16}/>Odpojit</Button></div>
+        <div className="flex flex-wrap gap-2">{portal.google.driveFolderUrl && <a className="inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100" href={portal.google.driveFolderUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-2" size={16}/>Otevřít složku</a>}<Button variant="secondary" disabled={busy || portal.employee.appRole === "manager"} onClick={disconnectDrive}><Unplug className="mr-2" size={16}/>Odpojit</Button></div>
       </div> : <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
         <div className="font-bold text-blue-950">Cílový účet: {portal.google.driveAllowedEmail || "není nastaven"}</div>
         <p className="mt-1 text-sm text-blue-900">Po připojení aplikace sama založí složku „Mosty v rodině – podepsané výkazy“. Není potřeba ji ručně vytvářet ani sdílet se servisním účtem.</p>
         {!portal.google.driveOAuthConfigured && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Nejdříve je potřeba v Google Cloud doplnit OAuth klienta. Aplikace je na něj již připravená.</p>}
-        <Button className="mt-3" disabled={busy || !portal.google.driveOAuthConfigured} onClick={connectDrive}><Link2 className="mr-2" size={16}/>{busy ? "Připravuji přihlášení…" : "Připojit Google Drive"}</Button>
+        <Button className="mt-3" disabled={busy || portal.employee.appRole === "manager" || !portal.google.driveOAuthConfigured} onClick={connectDrive}><Link2 className="mr-2" size={16}/>{busy ? "Připravuji přihlášení…" : "Připojit Google Drive"}</Button>
       </div>}
     </Card>
   </fieldset>;

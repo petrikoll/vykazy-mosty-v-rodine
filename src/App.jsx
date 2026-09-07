@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { isEducationEligible } from "./educationEligibility.mjs";
 import { confirmUnsavedChanges, useGuardedState } from "./unsavedChanges.jsx";
 import { BarChart3, BookOpenCheck, CalendarDays, ClipboardList, GraduationCap, KeyRound, LayoutDashboard, LogOut, Settings2, ShieldCheck, X } from "lucide-react";
 import { api, jsonBody, getToken, setToken } from "./api.mjs";
@@ -162,10 +163,12 @@ export default function App() {
 
   const employee = portal.employee;
   const leader = ["manager", "director", "project_manager"].includes(employee.appRole);
-  const admin = ["director", "project_manager"].includes(employee.appRole);
+  const admin = leader;
+  const canSeeEducation = leader || isEducationEligible(employee, config.positions);
+  const availableGroups = NAV_GROUPS.map(group => ({ ...group, items: group.items.filter(item => item.id !== "education" || canSeeEducation) }));
   const navGroups = admin
-    ? [...NAV_GROUPS, { label: "Správa", items: [{ id: "settings", label: "Pracovníci a nastavení", icon: Settings2 }] }]
-    : NAV_GROUPS;
+    ? [...availableGroups, { label: "Správa", items: [{ id: "settings", label: "Pracovníci a nastavení", icon: Settings2 }] }]
+    : availableGroups;
   const ownPlans = portal.educationPlans.filter((item) => item.employeeId === employee.id);
   const ownEducation = portal.educationRecords.filter((item) => item.employeeId === employee.id);
   const ownEvaluations = portal.employeeEvaluations.filter((item) => item.employeeId === employee.id);
@@ -212,7 +215,7 @@ export default function App() {
         {active === "reports" && (["manager", "director", "project_manager"].includes(employee.appRole)
           ? <ManagerReports portal={portal} positions={config.positions} project={config.project} onRefresh={refresh}/>
           : <WorkReports employee={employee} positions={config.positions} project={config.project} reports={ownReports} onRefresh={refresh}/>)}
-        {active === "education" && (["manager", "director", "project_manager"].includes(employee.appRole)
+        {active === "education" && canSeeEducation && (["manager", "director", "project_manager"].includes(employee.appRole)
           ? <ManagerEducation portal={portal} positions={config.positions} project={config.project} onRefresh={refresh}/>
           : <Education employee={employee} actor={employee} employees={portal.employees} positions={config.positions} project={config.project} plans={ownPlans} records={ownEducation} evaluations={ownEvaluations} onRefresh={refresh} readOnly/>)}
         {active === "supervisions" && <Supervisions employee={employee} employees={portal.employees} records={portal.supervisions} onRefresh={refresh}/>}

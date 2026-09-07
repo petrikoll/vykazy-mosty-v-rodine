@@ -1,3 +1,4 @@
+import { isEducationEligible } from "../educationEligibility.mjs";
 import React, { useMemo, useState } from "react";
 import { ClipboardCheck, GraduationCap, ListChecks, RotateCcw, ShieldCheck, Users } from "lucide-react";
 import { Button, Card, Field, Input, StatusBadge } from "./Common.jsx";
@@ -41,7 +42,8 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
     && (isAdmin || employee.id === portal.employee.id || employee.appRole === "worker")), [portal.employee.id, portal.employees, isAdmin]);
 
   const rows = useMemo(() => visibleEmployees.map((employee) => {
-    const educationRecords = portal.educationRecords.filter((record) => record.employeeId === employee.id
+    const educationEligible = isEducationEligible(employee, positions);
+    const educationRecords = portal.educationRecords.filter((record) => educationEligible && record.employeeId === employee.id
       && dateRangesOverlap(record.dateFrom || record.date, record.dateTo || record.dateFrom || record.date, dateFrom, dateTo));
     const supervisions = portal.supervisions.filter((record) => dateInRange(record.date, dateFrom, dateTo)
       && (record.participantIds || []).includes(employee.id));
@@ -55,6 +57,7 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
         && task.status !== "completed" && dateInRange(task.deadline || meeting.date, dateFrom, dateTo)));
     return {
       employee,
+      educationEligible,
       positions: positionNames(employee, positions),
       educationHours: educationRecords.reduce((sum, record) => sum + Number(record.hours || 0), 0),
       supervisionHours: supervisions.reduce((sum, record) => sum + Number(record.hours || 0), 0),
@@ -108,9 +111,9 @@ export default function TeamDashboard({ portal, positions, onNavigate }) {
           <thead><tr className="border-b border-slate-200 text-xs uppercase text-slate-500"><th className="px-2 py-2">Pracovník a pozice</th><th className="px-2 py-2 text-right">Vzdělávání</th><th className="px-2 py-2 text-right">Supervize</th><th className="px-2 py-2">Vzdělávací plán</th><th className="px-2 py-2">Výkazy práce</th><th className="px-2 py-2 text-right">Úkoly</th></tr></thead>
           <tbody>{rows.map((row) => <tr key={row.employee.id} className="border-b border-slate-100 last:border-0">
             <td className="px-2 py-2.5"><strong className="text-slate-950">{row.employee.name}</strong><div className="mt-0.5 text-xs text-slate-500">{row.positions.join(" · ") || "Bez přiřazené pozice"}</div></td>
-            <td className="px-2 py-2.5 text-right">{row.projectManager ? <span className="text-slate-400">—</span> : <button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("education")}>{formatHours(row.educationHours)} h</button>}</td>
+            <td className="px-2 py-2.5 text-right">{!row.educationEligible ? <span className="text-slate-400">—</span> : <button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("education")}>{formatHours(row.educationHours)} h</button>}</td>
             <td className="px-2 py-2.5 text-right"><button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("supervisions")}>{formatHours(row.supervisionHours)} h</button><div className="text-[11px] text-slate-500">{row.supervisionCount} záznamů</div></td>
-            <td className="px-2 py-2.5">{row.projectManager ? <span className="text-xs font-semibold text-slate-500">Nevyžaduje se</span> : <button className="space-y-1 text-left" onClick={() => onNavigate("education")}>{row.plans.map((plan) => <span key={plan.year} className="flex items-center gap-1.5"><span className="text-[11px] font-semibold text-slate-500">{plan.year}</span><StatusBadge status={plan.status}/></span>)}</button>}</td>
+            <td className="px-2 py-2.5">{!row.educationEligible ? <span className="text-xs font-semibold text-slate-500">Nevyžaduje se</span> : <button className="space-y-1 text-left" onClick={() => onNavigate("education")}>{row.plans.map((plan) => <span key={plan.year} className="flex items-center gap-1.5"><span className="text-[11px] font-semibold text-slate-500">{plan.year}</span><StatusBadge status={plan.status}/></span>)}</button>}</td>
             <td className="px-2 py-2.5">{row.projectManager ? <span className="text-xs font-semibold text-slate-500">Nevyžaduje se</span> : <button className="text-left hover:underline" onClick={() => onNavigate("reports")}><strong>{row.approvedReportCount} schváleno</strong><span className="text-slate-500"> / {row.reportCount} celkem</span>{row.returnedReportCount > 0 && <span className="block text-xs font-bold text-red-700">{row.returnedReportCount} vráceno</span>}</button>}</td>
             <td className="px-2 py-2.5 text-right"><button className="font-extrabold text-blue-800 hover:underline" onClick={() => onNavigate("meetings")}>{row.taskCount}</button></td>
           </tr>)}</tbody>
