@@ -65,6 +65,12 @@ body {
   }
 }
 
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .pwa-install-control {
+    display: none !important;
+  }
+}
+
 .app-shell-background {
   background-color: #f4f0e9;
   background-image:

@@ -14,6 +14,7 @@ import WorkReports from "./components/WorkReports.jsx";
 import PortalDashboard from "./components/PortalDashboard.jsx";
 import TeamDashboard from "./components/TeamDashboard.jsx";
 import PushNotificationButton from "./components/PushNotificationButton.jsx";
+import InstallAppButton from "./components/InstallAppButton.jsx";
 import MethodologySaver from "./components/MethodologySaver.jsx";
 
 const NAV_GROUPS = [
@@ -52,6 +53,7 @@ function AuthScreen({ setup, setupCodeRequired, options, onAuthenticated }) {
         {setup ? <><Field label="Jméno Odborného garanta"><Input required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}/></Field><Field label="Celkový úvazek u zaměstnavatele"><Input type="number" min="0" step="0.01" value={form.globalFte} onChange={(e) => setForm((f) => ({ ...f, globalFte: e.target.value }))}/></Field>{setupCodeRequired && <Field label="Instalační kód" hint="Tajný kód nastavený při nasazení aplikace"><Input required type="password" value={form.setupCode} onChange={(e) => setForm((f) => ({ ...f, setupCode: e.target.value }))}/></Field>}</> : <><Field label="Jméno pracovníka"><Select required value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>{options.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field><Field label="PIN" hint="Zadejte svůj osobní PIN"><Input required type="password" inputMode="numeric" pattern="[0-9]{4,10}" value={form.pin} onChange={(e) => setForm((f) => ({ ...f, pin: e.target.value }))}/></Field></>}
         <Button className="w-full py-3" disabled={busy}>{busy ? "Ověřuji…" : setup ? "Založit portál" : "Přihlásit"}</Button>
       </form>
+      <div className="mt-3 flex justify-center"><InstallAppButton variant="secondary" className="w-full justify-center"/></div>
     </main>
   </div>;
 }
@@ -198,6 +200,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <div className="mr-1 hidden text-right sm:block"><div className="text-sm font-bold text-white">{employee.name}</div><div className="text-xs text-blue-200">{roleLabel}</div></div>
             <div className="flex items-center gap-1 rounded-lg border border-white/15 bg-blue-950/30 p-1 shadow-inner">
+              <InstallAppButton/>
               <PushNotificationButton employeeId={employee.id}/>
               <Button variant="header" compact onClick={() => setShowPinChange(true)} aria-label="Změnit PIN" title="Změnit osobní PIN"><KeyRound size={15}/><span className="ml-1.5 hidden xl:inline">PIN</span></Button>
               <Button variant="header" compact onClick={logout} aria-label="Odhlásit" title="Odhlásit z portálu"><LogOut size={15}/><span className="ml-1.5 hidden xl:inline">Odhlásit</span></Button>

@@ -1,6 +1,7 @@
 {
   "name": "Mosty v rodině · Personální portál",
   "short_name": "Mosty v rodině",
+  "id": "/",
   "description": "Výkazy práce, vzdělávání, supervize a porady projektu Mosty v rodině.",
   "lang": "cs",
   "start_url": "/",
