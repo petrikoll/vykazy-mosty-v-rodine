@@ -44,7 +44,7 @@ deniedPayload = null;
 leaderOnly(
   { auth: { employee: { appRole: "worker" } } },
   { status(code) { deniedStatus = code; return this; }, json(payload) { deniedPayload = payload; return payload; } },
-  () => assert.fail("worker must not write education, supervision, or meeting records")
+  () => assert.fail("worker must not write education or supervision records")
 );
 assert.equal(deniedStatus, 403, "worker is denied shared-record write endpoints");
 assert.match(deniedPayload.error, /Odborný garant, Vedoucí služby\/programu nebo Projektový manažer/, "permission error names all allowed roles");

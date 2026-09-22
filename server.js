@@ -193,16 +193,16 @@ function meetingTaskIdentity(value) {
     .trim();
 }
 
-function meetingTaskEntries(db, { beforeDate = "", excludeMeetingId = "", includeCompleted = false } = {}) {
+function meetingTaskEntries(db, { beforeDate = "", excludeMeetingId = "", includeCompleted = false, allowMeeting = () => true } = {}) {
   return db.meetings
-    .filter((meeting) => meeting.id !== excludeMeetingId && meeting.status !== "draft" && (!beforeDate || !meeting.date || meeting.date <= beforeDate))
+    .filter((meeting) => meeting.id !== excludeMeetingId && meeting.status !== "draft" && allowMeeting(meeting) && (!beforeDate || !meeting.date || meeting.date <= beforeDate))
     .toSorted((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
     .flatMap((meeting) => (meeting.tasks || []).map((task) => ({ meeting, task })))
     .filter(({ task }) => includeCompleted || task.status !== "completed");
 }
 
-function findMeetingTaskEntry(db, task, { beforeDate = "", excludeMeetingId = "", sourceMeetingId = "", includeCompleted = false } = {}) {
-  const entries = meetingTaskEntries(db, { beforeDate, excludeMeetingId, includeCompleted });
+function findMeetingTaskEntry(db, task, { beforeDate = "", excludeMeetingId = "", sourceMeetingId = "", includeCompleted = false, allowMeeting } = {}) {
+  const entries = meetingTaskEntries(db, { beforeDate, excludeMeetingId, includeCompleted, allowMeeting });
   const taskId = normalizeText(task?.id, 100);
   if (sourceMeetingId && taskId) {
     const exactReference = entries.find((entry) => entry.meeting.id === sourceMeetingId && entry.task.id === taskId);
@@ -262,7 +262,7 @@ function resolveMeetingFollowUpTasks(db, meeting) {
   }).filter(Boolean);
 }
 
-function applyMeetingTaskContinuity(db, { currentMeeting = null, date = "", tasks = [], followUpTasks = [], externalParticipantNames = [] } = {}) {
+function applyMeetingTaskContinuity(db, { currentMeeting = null, date = "", tasks = [], followUpTasks = [], externalParticipantNames = [], allowReferencedTaskUpdates = true, allowMeeting } = {}) {
   const currentTasks = currentMeeting?.tasks || [];
   const currentTaskIds = new Set(currentTasks.map((task) => task.id).filter(Boolean));
   const references = new Map();
@@ -276,6 +276,7 @@ function applyMeetingTaskContinuity(db, { currentMeeting = null, date = "", task
     });
   };
   const updateReferencedTask = (entry, rawTask, explicit) => {
+    if (!allowReferencedTaskUpdates) return;
     const merged = mergeMeetingTaskInputs(entry.task, rawTask, { explicit });
     const allowedExternalOwners = [...new Set([...externalParticipantNames, ...(entry.task.externalOwnerNames || [])])];
     const normalized = normalizeMeetingTasks(db, [merged], allowedExternalOwners, [entry.task])[0];
@@ -298,6 +299,7 @@ function applyMeetingTaskContinuity(db, { currentMeeting = null, date = "", task
       excludeMeetingId: currentMeeting?.id || "",
       sourceMeetingId: normalizeText(task?.sourceMeetingId, 100),
       includeCompleted: true,
+      allowMeeting,
     });
     if (!entry) return;
     rememberReference(entry);
@@ -314,6 +316,7 @@ function applyMeetingTaskContinuity(db, { currentMeeting = null, date = "", task
     const existing = findMeetingTaskEntry(db, task, {
       beforeDate: date,
       excludeMeetingId: currentMeeting?.id || "",
+      allowMeeting,
     });
     if (!existing) {
       currentInputs.push(task);
@@ -339,6 +342,14 @@ function meetingTaskOwnerIds(task) {
     ...(Array.isArray(task?.ownerIds) ? task.ownerIds : []),
     task?.ownerId,
   ].filter(Boolean))];
+}
+
+function canAccessMeeting(employee, meeting) {
+  return isLeaderRole(employee.appRole)
+    || (meeting.participantIds || []).includes(employee.id)
+    || (meeting.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(employee.id)
+      || (task.completionRecipientIds || []).includes(employee.id))
+    || meeting.createdBy === employee.id;
 }
 
 function normalizeExternalParticipants(names, teamParticipants = []) {
@@ -603,8 +614,6 @@ async function visiblePortalData(db, employee) {
   const admin = isAdminRole(employee.appRole);
   const leader = manager || admin;
   const isParticipant = (record) => (record.participantIds || []).includes(employee.id);
-  const hasAssignedTask = (record) => (record.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(employee.id));
-  const hasReceivedTaskResult = (record) => (record.tasks || []).some((task) => (task.completionRecipientIds || []).includes(employee.id));
   return {
     employees: (leader ? db.employees : [employee]).map(publicEmployee),
     collaborators: db.employees.filter((item) => item.active !== false).map((item) => ({ id: item.id, name: item.name, appRole: item.appRole })),
@@ -619,7 +628,7 @@ async function visiblePortalData(db, employee) {
     educationPlans: db.educationPlans.filter((item) => eligibleIds.has(item.employeeId) && (leader || item.employeeId === employee.id)),
     educationRecords: db.educationRecords.filter((item) => eligibleIds.has(item.employeeId) && (leader || item.employeeId === employee.id)),
     supervisions: db.supervisions.filter((item) => leader || isParticipant(item)),
-    meetings: db.meetings.filter((item) => leader || isParticipant(item) || hasAssignedTask(item) || hasReceivedTaskResult(item) || item.createdBy === employee.id),
+    meetings: db.meetings.filter((item) => canAccessMeeting(employee, item)),
     methodologyAnswers: db.methodologyAnswers.filter((item) => item.employeeId === employee.id),
   };
 }
@@ -1829,7 +1838,7 @@ app.delete("/api/supervisions/:id", requireAuth, leaderOnly, deleteSimpleRecordH
   collection: "supervisions", type: "supervision", label: "Záznam supervize",
 }));
 
-app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
+app.post("/api/meetings", requireAuth, async (req, res) => {
   try {
     const result = await mutateDb(async (db) => {
       const participants = db.employees.filter((item) => (req.body.participantIds || []).includes(item.id));
@@ -1840,6 +1849,8 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
         tasks: req.body.tasks,
         followUpTasks: req.body.followUpTasks,
         externalParticipantNames,
+        allowReferencedTaskUpdates: isLeaderRole(req.auth.employee.appRole),
+        allowMeeting: (meeting) => canAccessMeeting(req.auth.employee, meeting),
       });
       const item = {
         id: makeId("MTG"), date, title: "Porada",
@@ -1879,7 +1890,7 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
   }
 });
 
-app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
+app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
   try {
     const result = await mutateDb(async (db) => {
       const item = db.meetings.find((entry) => entry.id === req.params.id);
@@ -1910,6 +1921,8 @@ app.patch("/api/meetings/:id", requireAuth, leaderOnly, async (req, res) => {
         tasks: req.body.tasks,
         followUpTasks: Array.isArray(req.body.followUpTasks) ? req.body.followUpTasks : resolveMeetingFollowUpTasks(db, item),
         externalParticipantNames,
+        allowReferencedTaskUpdates: isLeaderRole(req.auth.employee.appRole),
+        allowMeeting: (meeting) => canAccessMeeting(req.auth.employee, meeting),
       });
 
       item.date = date;
@@ -2015,7 +2028,7 @@ app.delete("/api/meetings/:id", requireAuth, leaderOnly, deleteSimpleRecordHandl
   collection: "meetings", type: "meeting", label: "Zápis z porady",
 }));
 
-app.post("/api/ai/meeting-minutes", requireAuth, leaderOnly, async (req, res) => {
+app.post("/api/ai/meeting-minutes", requireAuth, async (req, res) => {
   try {
     const result = await callGemini({
       promptText: `Datum porady: ${normalizeText(req.body.date, 30)}\nNeuspořádaný text porady:\n${normalizeText(req.body.content || req.body.notes, 40000)}`,
@@ -2036,7 +2049,7 @@ app.post("/api/ai/meeting-minutes", requireAuth, leaderOnly, async (req, res) =>
   }
 });
 
-app.post("/api/ai/meeting-import", requireAuth, leaderOnly, upload.single("file"), async (req, res) => {
+app.post("/api/ai/meeting-import", requireAuth, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Vyberte soubor se zápisem." });
     if (req.file.size > 18 * 1024 * 1024) return res.status(400).json({ error: "Soubor může mít nejvýše 18 MB." });
@@ -2107,13 +2120,13 @@ app.post("/api/ai/generate", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/meetings/:id/pdf", requireAuth, leaderOnly, upload.single("file"), async (req, res) => {
+app.post("/api/meetings/:id/pdf", requireAuth, upload.single("file"), async (req, res) => {
   try {
     if (!req.file || req.file.mimetype !== "application/pdf") return res.status(400).json({ error: "Nahrajte PDF zápisu." });
     const db = await readDb();
     const meeting = db.meetings.find((item) => item.id === req.params.id);
     if (!meeting) return res.status(404).json({ error: "Porada nebyla nalezena." });
-    if (!isLeaderRole(req.auth.employee.appRole) && meeting.createdBy !== req.auth.employee.id) return res.status(403).json({ error: "PDF této porady nemůžete uložit." });
+    if (!isLeaderRole(req.auth.employee.appRole) && (meeting.createdBy !== req.auth.employee.id || meeting.status === "archived")) return res.status(403).json({ error: "PDF této porady nemůžete uložit." });
     const uploaded = await googleWorkspace.uploadFile({
       name: `${meeting.date}__zapis_z_porady.pdf`, mimeType: "application/pdf", buffer: req.file.buffer,
       pathSegments: [String(new Date(meeting.date).getFullYear()), "Porady"],
@@ -2273,7 +2286,11 @@ async function startServer() {
   });
 }
 
-startServer().catch((error) => {
-  console.error("Application startup failed:", error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error("Application startup failed:", error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { app };

@@ -222,7 +222,7 @@ export default function App() {
           ? <ManagerEducation portal={portal} positions={config.positions} project={config.project} onRefresh={refresh}/>
           : <Education employee={employee} actor={employee} employees={portal.employees} positions={config.positions} project={config.project} plans={ownPlans} records={ownEducation} evaluations={ownEvaluations} onRefresh={refresh} readOnly/>)}
         {active === "supervisions" && <Supervisions employee={employee} employees={portal.employees} records={portal.supervisions} onRefresh={refresh}/>}
-        {active === "meetings" && <Meetings employee={employee} employees={portal.employees} meetings={portal.meetings} project={config.project} onRefresh={refresh}/>}
+        {active === "meetings" && <Meetings employee={employee} employees={portal.collaborators || portal.employees} meetings={portal.meetings} project={config.project} onRefresh={refresh}/>}
         {active === "settings" && admin && <Settings portal={portal} positions={config.positions} onRefresh={refresh}/>}
         </main>
       </section>
