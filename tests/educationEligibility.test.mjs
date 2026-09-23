@@ -24,9 +24,10 @@ let permitted = false;
 leaderOnly({ auth: { employee: manager } }, {}, () => { permitted = true; });
 assert.equal(permitted, true);
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
-for (const resource of ["employees", "work-reports", "education-records", "education-plans", "employee-evaluations", "supervisions", "meetings"]) {
+for (const resource of ["employees", "work-reports", "education-records", "education-plans", "employee-evaluations", "supervisions"]) {
   assert.ok(server.includes(`app.delete("/api/${resource}/:id", requireAuth, leaderOnly,`), `${resource} deletion permits guarantor and still requires authentication`);
 }
+assert.ok(server.includes('app.delete("/api/meetings/:id", requireAuth, meetingManagerOnly,'), "only the guarantor or service manager may delete meetings");
 assert.ok(server.includes('app.post("/api/employees", requireAuth, leaderOnly,'));
 assert.ok(server.includes('app.patch("/api/employees/:id", requireAuth, leaderOnly,'));
 assert.equal((server.match(/isEducationEligible\(employee\)\) \{/g) || []).length, 3, "plan, education and linking endpoints enforce eligibility");

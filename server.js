@@ -344,12 +344,36 @@ function meetingTaskOwnerIds(task) {
   ].filter(Boolean))];
 }
 
+function meetingMinutesAuthorId(meeting) {
+  if (meeting.minutesAuthorId) return meeting.minutesAuthorId;
+  return meeting.status === "scheduled" ? "" : meeting.createdBy || "";
+}
+
+function canManageMeeting(employee) {
+  return ["manager", "director"].includes(employee?.appRole);
+}
+
+function meetingManagerOnly(req, res, next) {
+  if (!canManageMeeting(req.auth?.employee)) {
+    return res.status(403).json({ error: "Tuto akci může provést pouze Odborný garant nebo Vedoucí služby/programu." });
+  }
+  return next();
+}
+
 function canAccessMeeting(employee, meeting) {
   return isLeaderRole(employee.appRole)
+    || (meeting.status === "scheduled" && employee.appRole === "worker")
     || (meeting.participantIds || []).includes(employee.id)
     || (meeting.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(employee.id)
       || (task.completionRecipientIds || []).includes(employee.id))
-    || meeting.createdBy === employee.id;
+    || meeting.createdBy === employee.id
+    || meetingMinutesAuthorId(meeting) === employee.id;
+}
+
+function canEditMeeting(employee, meeting) {
+  if (canManageMeeting(employee)) return true;
+  if (meeting.status === "scheduled") return ["worker", "project_manager"].includes(employee.appRole);
+  return ["draft", "submitted"].includes(meeting.status) && meetingMinutesAuthorId(meeting) === employee.id;
 }
 
 function normalizeExternalParticipants(names, teamParticipants = []) {
@@ -1079,6 +1103,7 @@ app.delete("/api/employees/:id", requireAuth, leaderOnly, async (req, res) => {
         || db.educationRecords.some((item) => item.employeeId === current.id)
         || db.supervisions.some((item) => item.createdBy === current.id || (item.participantIds || []).includes(current.id))
         || db.meetings.some((item) => item.createdBy === current.id
+          || meetingMinutesAuthorId(item) === current.id
           || (item.participantIds || []).includes(current.id)
           || (item.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(current.id)));
       if (hasRecords) db.employees[index] = next;
@@ -1838,33 +1863,39 @@ app.delete("/api/supervisions/:id", requireAuth, leaderOnly, deleteSimpleRecordH
   collection: "supervisions", type: "supervision", label: "Záznam supervize",
 }));
 
-app.post("/api/meetings", requireAuth, async (req, res) => {
+app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
   try {
     const result = await mutateDb(async (db) => {
       const participants = db.employees.filter((item) => (req.body.participantIds || []).includes(item.id));
       const externalParticipantNames = normalizeExternalParticipants(req.body.externalParticipantNames, participants);
       const date = normalizeText(req.body.date, 20);
+      const notes = normalizeText(req.body.content || req.body.notes, 40000);
       const taskResult = applyMeetingTaskContinuity(db, {
         date,
-        tasks: req.body.tasks,
-        followUpTasks: req.body.followUpTasks,
+        tasks: notes ? req.body.tasks : [],
+        followUpTasks: notes ? req.body.followUpTasks : [],
         externalParticipantNames,
-        allowReferencedTaskUpdates: isLeaderRole(req.auth.employee.appRole),
+        allowReferencedTaskUpdates: canManageMeeting(req.auth.employee),
         allowMeeting: (meeting) => canAccessMeeting(req.auth.employee, meeting),
       });
+      const requestedStatus = req.body.status === "submitted" ? "submitted" : req.body.status === "scheduled" ? "scheduled" : "draft";
+      const status = notes ? requestedStatus === "scheduled" ? "draft" : requestedStatus : "scheduled";
       const item = {
         id: makeId("MTG"), date, title: "Porada",
         location: "", participantIds: participants.map((item) => item.id),
         externalParticipantNames,
         participantNames: [...participants.map((item) => item.name), ...externalParticipantNames], agenda: "",
-        notes: normalizeText(req.body.content || req.body.notes, 40000), decisions: "",
+        notes, decisions: "",
         tasks: taskResult.tasks,
         followUpTaskRefs: taskResult.followUpTaskRefs,
-        status: req.body.status === "submitted" ? "submitted" : "draft",
+        status,
         createdBy: req.auth.employee.id, createdByName: req.auth.employee.name,
+        minutesAuthorId: notes ? req.auth.employee.id : "",
+        minutesAuthorName: notes ? req.auth.employee.name : "",
         createdAt: now(), updatedAt: now(),
       };
-      if (!item.date || !item.notes) throw new Error("Datum a zápis z porady jsou povinné.");
+      if (!item.date) throw new Error("Datum porady je povinné.");
+      if (requestedStatus === "submitted" && !item.notes) throw new Error("Před dokončením doplňte zápis z porady.");
       db.meetings.push(item);
       addAudit(db, req.auth.employee, "create", "meeting", item.id);
       return { data: db, value: {
@@ -1876,7 +1907,7 @@ app.post("/api/meetings", requireAuth, async (req, res) => {
     const sync = await syncRecordSafe("meeting", result.meeting);
     const followUpSync = await Promise.all(result.affectedMeetings.map((meeting) => syncRecordSafe("meeting", meeting)));
     res.status(201).json({ meeting: result.meeting, mergedTaskCount: result.mergedTaskCount, sync, followUpSync });
-    if (result.meeting.status !== "draft") {
+    if (!["draft", "scheduled"].includes(result.meeting.status)) {
       const ownerIds = [...new Set((result.meeting.tasks || []).flatMap(meetingTaskOwnerIds))];
       void sendPushToEmployees(ownerIds, {
         title: "Nový úkol z porady",
@@ -1899,13 +1930,13 @@ app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
         missing.status = 404;
         throw missing;
       }
-      if (item.status === "archived" && !isAdminRole(req.auth.employee.appRole)) {
-        const archived = new Error("Hotový zápis smí zpětně upravit pouze Vedoucí služby/programu.");
+      if (item.status === "archived" && !canManageMeeting(req.auth.employee)) {
+        const archived = new Error("Hotový zápis smí zpětně upravit pouze Odborný garant nebo Vedoucí služby/programu.");
         archived.status = 403;
         throw archived;
       }
-      if (!isAdminRole(req.auth.employee.appRole) && item.createdBy !== req.auth.employee.id) {
-        const forbidden = new Error("Tento koncept může upravit pouze jeho autor nebo Vedoucí služby/programu.");
+      if (!canEditMeeting(req.auth.employee, item)) {
+        const forbidden = new Error("Tento zápis může upravit jeho zapisovatel, Odborný garant nebo Vedoucí služby/programu.");
         forbidden.status = 403;
         throw forbidden;
       }
@@ -1921,7 +1952,7 @@ app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
         tasks: req.body.tasks,
         followUpTasks: Array.isArray(req.body.followUpTasks) ? req.body.followUpTasks : resolveMeetingFollowUpTasks(db, item),
         externalParticipantNames,
-        allowReferencedTaskUpdates: isLeaderRole(req.auth.employee.appRole),
+        allowReferencedTaskUpdates: canManageMeeting(req.auth.employee),
         allowMeeting: (meeting) => canAccessMeeting(req.auth.employee, meeting),
       });
 
@@ -1933,6 +1964,10 @@ app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
       item.tasks = taskResult.tasks;
       item.followUpTaskRefs = taskResult.followUpTaskRefs;
       item.status = req.body.status === "submitted" ? "submitted" : "draft";
+      if (!item.minutesAuthorId) {
+        item.minutesAuthorId = req.auth.employee.id;
+        item.minutesAuthorName = req.auth.employee.name;
+      }
       item.updatedAt = now();
       addAudit(db, req.auth.employee, "update", "meeting", item.id);
       return { data: db, value: {
@@ -1944,7 +1979,7 @@ app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
     const sync = await syncRecordSafe("meeting", result.meeting);
     const followUpSync = await Promise.all(result.affectedMeetings.map((meeting) => syncRecordSafe("meeting", meeting)));
     res.json({ meeting: result.meeting, mergedTaskCount: result.mergedTaskCount, sync, followUpSync });
-    if (result.meeting.status !== "draft") {
+    if (!["draft", "scheduled"].includes(result.meeting.status)) {
       const ownerIds = [...new Set((result.meeting.tasks || []).flatMap(meetingTaskOwnerIds))];
       void sendPushToEmployees(ownerIds, {
         title: "Úkoly z porady byly aktualizovány",
@@ -2024,7 +2059,7 @@ app.patch("/api/meetings/:meetingId/tasks/:taskId/complete", requireAuth, async 
   }
 });
 
-app.delete("/api/meetings/:id", requireAuth, leaderOnly, deleteSimpleRecordHandler({
+app.delete("/api/meetings/:id", requireAuth, meetingManagerOnly, deleteSimpleRecordHandler({
   collection: "meetings", type: "meeting", label: "Zápis z porady",
 }));
 
@@ -2126,7 +2161,7 @@ app.post("/api/meetings/:id/pdf", requireAuth, upload.single("file"), async (req
     const db = await readDb();
     const meeting = db.meetings.find((item) => item.id === req.params.id);
     if (!meeting) return res.status(404).json({ error: "Porada nebyla nalezena." });
-    if (!isLeaderRole(req.auth.employee.appRole) && (meeting.createdBy !== req.auth.employee.id || meeting.status === "archived")) return res.status(403).json({ error: "PDF této porady nemůžete uložit." });
+    if (!canManageMeeting(req.auth.employee) && (meetingMinutesAuthorId(meeting) !== req.auth.employee.id || meeting.status !== "submitted")) return res.status(403).json({ error: "PDF této porady nemůžete uložit." });
     const uploaded = await googleWorkspace.uploadFile({
       name: `${meeting.date}__zapis_z_porady.pdf`, mimeType: "application/pdf", buffer: req.file.buffer,
       pathSegments: [String(new Date(meeting.date).getFullYear()), "Porady"],

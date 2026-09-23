@@ -17,7 +17,7 @@ export async function createMeetingPdf(meeting, project) {
       { text: project.name, style: "project" },
       { margin: [0, 20, 0, 12], table: { widths: [90, "*"], body: [
         ["Datum", meeting.date], ["Účastníci", (meeting.participantNames || []).join(", ") || "-"],
-        ["Zapsal/a", meeting.createdByName || "-"],
+        ["Zapsal/a", meeting.minutesAuthorName || meeting.createdByName || "-"],
       ] }, layout: "lightHorizontalLines" },
       { text: "Zápis", style: "heading" }, { text: meetingContent || "Bez dalšího zápisu.", preserveLeadingSpaces: true },
       { text: "Úkoly", style: "heading" },

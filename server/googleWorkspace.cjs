@@ -312,7 +312,7 @@ function valuesForRecord(type, record) {
     case "supervision":
       return [record.id, record.date, record.type === "group" ? "team" : record.type, record.supervisor, record.timeFrom || "", record.timeTo || "", record.hours, (record.participantNames || []).join(", "), record.createdByName, record.createdAt];
     case "meeting":
-      return [record.id, record.date, record.title, record.location, (record.participantNames || []).join(", "), record.agenda, record.decisions, JSON.stringify(record.tasks || []), record.status, record.driveFileUrl || "", record.createdByName, record.updatedAt, record.notes || ""];
+      return [record.id, record.date, record.title, record.location, (record.participantNames || []).join(", "), record.agenda, record.decisions, JSON.stringify(record.tasks || []), record.status, record.driveFileUrl || "", record.minutesAuthorName || (record.status === "scheduled" ? "" : record.createdByName), record.updatedAt, record.notes || ""];
     case "pushSubscription":
       return [record.id, record.employeeId, record.employeeName, record.endpoint, record.keys?.p256dh || "", record.keys?.auth || "", record.createdAt, record.updatedAt];
     case "methodologyAnswer":

@@ -15,6 +15,9 @@ const localToday = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
+const meetingMinutesAuthorId = (meeting) => meeting.minutesAuthorId || (meeting.status === "scheduled" ? "" : meeting.createdBy || "");
+const meetingMinutesAuthorName = (meeting) => meeting.minutesAuthorName || (meeting.status === "scheduled" ? "" : meeting.createdByName || "");
+
 function taskRows(tasks = [], employees = [], externalParticipantNames = [], withEmptyFallback = true) {
   const rows = tasks.map((task) => {
     const legacyOwnerId = task.ownerId || findTaskOwnerId(task.owner, employees);
@@ -102,7 +105,7 @@ function TaskOwnerPicker({ task, employees, externalParticipantNames, onChange }
 
 export default function Meetings({ employee, employees, meetings, project, onRefresh }) {
   const isLeader = ["manager", "director", "project_manager"].includes(employee.appRole);
-  const isAdmin = ["director", "project_manager"].includes(employee.appRole);
+  const canManageMeeting = ["manager", "director"].includes(employee.appRole);
   const [form, setForm, resetForm] = useGuardedState(blankForm);
   const [view, setView] = useState("archive");
   const [selectedYear, setSelectedYear] = useState(currentMeetingYear);
@@ -112,6 +115,9 @@ export default function Meetings({ employee, employees, meetings, project, onRef
   const [notice, setNotice] = useTimedNotice();
   const importInput = useRef(null);
   const hasContent = Boolean(String(form.content || "").trim());
+  const canEditMeeting = (meeting) => canManageMeeting
+    || (meeting.status === "scheduled" && ["worker", "project_manager"].includes(employee.appRole))
+    || (["draft", "submitted"].includes(meeting.status) && meetingMinutesAuthorId(meeting) === employee.id);
   const followUpsForDate = (date, excludeMeetingId = "") => taskRows(
     unresolvedMeetingTasks(meetings, employees, { beforeDate: date, excludeMeetingId }),
     employees,
@@ -205,11 +211,13 @@ export default function Meetings({ employee, employees, meetings, project, onRef
     }
   };
 
-  const save = async (withPdf) => {
+  const save = async (mode) => {
+    const withPdf = mode === "complete";
+    const scheduled = mode === "scheduled";
     setBusy(true); setNotice(null);
     try {
       const endpoint = form.id ? `/api/meetings/${form.id}` : "/api/meetings";
-      const saved = await api(endpoint, { method: form.id ? "PATCH" : "POST", body: jsonBody({ ...form, tasks: tasksForSave(), followUpTasks: tasksForSave(form.followUpTasks || []), status: withPdf ? "submitted" : "draft" }) });
+      const saved = await api(endpoint, { method: form.id ? "PATCH" : "POST", body: jsonBody({ ...form, tasks: tasksForSave(), followUpTasks: tasksForSave(form.followUpTasks || []), status: scheduled ? "scheduled" : withPdf ? "submitted" : "draft" }) });
       // If subsequent PDF upload fails, retry updates THIS meeting, not a new one.
       resetForm((current) => ({ ...current, id: saved.meeting.id, originalStatus: saved.meeting.status }));
       resetExternalName("");
@@ -221,7 +229,12 @@ export default function Meetings({ employee, employees, meetings, project, onRef
       }
       if (MEETING_YEARS.includes(Number(String(saved.meeting.date || "").slice(0, 4)))) setSelectedYear(Number(String(saved.meeting.date).slice(0, 4)));
       const continuityNotice = saved.mergedTaskCount ? ` ${saved.mergedTaskCount === 1 ? "Opakovaný úkol byl propojen s původním záznamem" : `${saved.mergedTaskCount} opakované úkoly byly propojeny s původními záznamy`}; nevznikla duplicita.` : "";
-      resetForm(blankForm()); resetExternalName(""); setView("archive"); setNotice({ type: "success", text: `${withPdf ? "Zápis byl dokončen, archivován a PDF staženo pro tisk." : "Koncept byl uložen. Kdykoli jej můžete znovu otevřít a dokončit."}${continuityNotice}` });
+      const successText = scheduled
+        ? "Porada byla založena. Zápis nyní může pořídit kterýkoli pracovník."
+        : withPdf
+          ? "Zápis byl dokončen, archivován a PDF staženo pro tisk."
+          : "Koncept byl uložen. Zapisovatel jej může znovu otevřít a dokončit.";
+      resetForm(blankForm()); resetExternalName(""); setView("archive"); setNotice({ type: "success", text: `${successText}${continuityNotice}` });
       await onRefresh();
     } catch (error) { setNotice({ type: "error", text: error.message }); } finally { setBusy(false); }
   };
@@ -259,9 +272,9 @@ export default function Meetings({ employee, employees, meetings, project, onRef
   return <fieldset disabled={busy} className="min-w-0 space-y-3">
     <Notice notice={notice}/>
     {view === "archive" && <SectionTabs label="Rok porady" value={selectedYear} onChange={setSelectedYear} items={MEETING_YEARS.map((year) => ({ value: year, label: `Porady ${year}` }))}/>}
-    {view === "archive" ? <Card title="Přehled zápisů" subtitle={isLeader ? "Zápisy a úkoly z porad. Nový zápis můžete napsat nebo nahrát ze souboru." : "Vidíte porady, kterých jste se účastnili, zápisy, které jste vytvořili, a porady s vašimi úkoly."} actions={<div className="flex flex-wrap gap-2"><input ref={importInput} className="hidden" type="file" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp" onChange={(event) => importMeeting(event.target.files?.[0])}/><Button compact variant="secondary" disabled={busy} onClick={() => importInput.current?.click()}><Upload className="mr-1 inline" size={16}/>{busy ? "Rozpoznávám…" : "Nahrát zápis"}</Button><Button compact disabled={busy} onClick={startNewMeeting}><Plus className="mr-1 inline" size={16}/>Vytvořit zápis</Button></div>}>
-      {!meetingsForYear.length ? <Empty>Pro rok {selectedYear} zatím nebyl vytvořen žádný zápis.</Empty> : <div className="space-y-2">{meetingsForYear.toSorted((a,b) => b.date.localeCompare(a.date)).map((item) => <article key={item.id} className="flex flex-col gap-2 rounded-lg border border-slate-200 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between"><div className="min-w-0 flex-1"><h3 className="text-sm font-bold">{item.date} · Porada</h3><div className="mt-0.5 text-xs text-slate-500">{(item.participantNames || []).join(", ")}</div></div><div className="flex flex-wrap items-center gap-2"><StatusBadge status={item.status}/><Button variant="secondary" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => setSelectedMeeting(item)}><Eye className="mr-1 inline" size={14}/>Zobrazit zápis</Button>{(isAdmin || (item.createdBy === employee.id && item.status !== "archived")) && <Button variant="secondary" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => edit(item)}><Pencil className="mr-1 inline" size={14}/>{item.status === "archived" ? "Opravit zápis" : "Upravit a dokončit"}</Button>}{item.driveFileUrl && <a className="text-sm font-bold text-blue-700 underline" href={item.driveFileUrl} target="_blank" rel="noreferrer">Otevřít PDF</a>}{isLeader && <Button variant="danger" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => remove(item)}><Trash2 className="mr-1 inline" size={14}/>Smazat</Button>}</div></article>)}</div>}
-    </Card> : <Card tone="blue" title={form.id ? "Upravit zápis z porady" : "Nový zápis z porady"} subtitle="Zápis patří do jednoho textového pole. Jednotlivé úkoly přiřaďte členům týmu nebo účastníkům mimo tým." actions={<Button variant="secondary" onClick={() => { if (!confirmUnsavedChanges()) return; resetForm(blankForm()); resetExternalName(""); setView("archive"); }}><Archive className="mr-1 inline" size={16}/>Zpět do archivu</Button>}>
+    {view === "archive" ? <Card title="Přehled porad a zápisů" subtitle={isLeader ? "Založte poradu nebo otevřete již založenou poradu a doplňte její zápis." : "U založené porady můžete pořídit zápis. Po prvním uložení jej dokončuje stejný zapisovatel."} actions={isLeader ? <div className="flex flex-wrap gap-2"><input ref={importInput} className="hidden" type="file" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp" onChange={(event) => importMeeting(event.target.files?.[0])}/><Button compact variant="secondary" disabled={busy} onClick={() => importInput.current?.click()}><Upload className="mr-1 inline" size={16}/>{busy ? "Rozpoznávám…" : "Nahrát zápis"}</Button><Button compact disabled={busy} onClick={startNewMeeting}><Plus className="mr-1 inline" size={16}/>Založit poradu</Button></div> : undefined}>
+      {!meetingsForYear.length ? <Empty>Pro rok {selectedYear} zatím nebyla založena žádná porada.</Empty> : <div className="space-y-2">{meetingsForYear.toSorted((a,b) => b.date.localeCompare(a.date)).map((item) => <article key={item.id} className="flex flex-col gap-2 rounded-lg border border-slate-200 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between"><div className="min-w-0 flex-1"><h3 className="text-sm font-bold">{item.date} · Porada</h3><div className="mt-0.5 text-xs text-slate-500">{(item.participantNames || []).join(", ") || "Účastníci zatím neuvedeni"}{meetingMinutesAuthorName(item) ? ` · zapsal/a ${meetingMinutesAuthorName(item)}` : ""}</div></div><div className="flex flex-wrap items-center gap-2"><StatusBadge status={item.status}/><Button variant="secondary" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => setSelectedMeeting(item)}><Eye className="mr-1 inline" size={14}/>{item.status === "scheduled" ? "Detail porady" : "Zobrazit zápis"}</Button>{canEditMeeting(item) && <Button variant="secondary" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => edit(item)}><Pencil className="mr-1 inline" size={14}/>{item.status === "scheduled" ? "Zapsat zápis" : item.status === "archived" ? "Opravit zápis" : "Upravit a dokončit"}</Button>}{item.driveFileUrl && <a className="text-sm font-bold text-blue-700 underline" href={item.driveFileUrl} target="_blank" rel="noreferrer">Otevřít PDF</a>}{canManageMeeting && <Button variant="danger" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => remove(item)}><Trash2 className="mr-1 inline" size={14}/>Smazat</Button>}</div></article>)}</div>}
+    </Card> : <Card tone="blue" title={!form.id ? "Založit poradu" : form.originalStatus === "scheduled" ? "Zapsat zápis z porady" : form.originalStatus === "archived" ? "Opravit zápis z porady" : "Upravit zápis z porady"} subtitle="Zápis patří do jednoho textového pole. Jednotlivé úkoly přiřaďte členům týmu nebo účastníkům mimo tým." actions={<Button variant="secondary" onClick={() => { if (!confirmUnsavedChanges()) return; resetForm(blankForm()); resetExternalName(""); setView("archive"); }}><Archive className="mr-1 inline" size={16}/>Zpět do archivu</Button>}>
       <div className="grid items-end gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
         <Field label="Datum"><Input type="date" value={form.date} onChange={(e) => changeMeetingDate(e.target.value)}/></Field>
         <div><div className="mb-1 text-xs font-bold leading-4 text-slate-700">Účastníci z týmu</div><div className="flex min-h-9 flex-wrap items-center gap-1">{employees.filter((item) => item.active !== false).map((item) => <label key={item.id} className={`cursor-pointer rounded-full border px-2 py-1 text-xs leading-4 ${form.participantIds.includes(item.id) ? "border-blue-600 bg-blue-50 text-blue-800" : "border-slate-300 bg-white"}`}><input className="mr-1" type="checkbox" checked={form.participantIds.includes(item.id)} onChange={() => toggle(item.id)}/>{item.name}</label>)}</div></div>
@@ -287,14 +300,14 @@ export default function Meetings({ employee, employees, meetings, project, onRef
           <Button variant="danger" className="min-h-8 px-1.5 py-1" onClick={() => removeTask(task.rowId)} aria-label={`Odstranit úkol ${index + 1}`}><Trash2 className="mx-auto" size={14}/></Button>
         </div>)}</div>
       </section>
-      <div className="mt-3 flex flex-wrap gap-2"><Button variant="secondary" disabled={busy || !hasContent} onClick={useAi}><Sparkles className="mr-1 inline" size={16}/>Uspořádat zápis pomocí Gemini</Button>{form.originalStatus !== "archived" && <Button variant="secondary" disabled={busy || !form.date || !hasContent} onClick={() => save(false)}>{form.id ? "Uložit změny konceptu" : "Uložit koncept"}</Button>}<Button disabled={busy || !form.date || !hasContent} onClick={() => save(true)}>{form.originalStatus === "archived" ? "Uložit opravu a aktualizovat PDF" : "Dokončit, vytvořit PDF a vytisknout"}</Button></div>
+      <div className="mt-3 flex flex-wrap gap-2">{!form.id && isLeader && <Button variant="secondary" disabled={busy || !form.date || hasContent} onClick={() => save("scheduled")}><Plus className="mr-1 inline" size={16}/>Založit poradu bez zápisu</Button>}<Button variant="secondary" disabled={busy || !hasContent} onClick={useAi}><Sparkles className="mr-1 inline" size={16}/>Uspořádat zápis pomocí Gemini</Button>{form.originalStatus !== "archived" && <Button variant="secondary" disabled={busy || !form.date || !hasContent} onClick={() => save("draft")}>{form.id ? "Uložit změny konceptu" : "Uložit koncept"}</Button>}<Button disabled={busy || !form.date || !hasContent} onClick={() => save("complete")}>{form.originalStatus === "archived" ? "Uložit opravu a aktualizovat PDF" : "Dokončit, vytvořit PDF a vytisknout"}</Button></div>
     </Card>}
-    {selectedMeeting && <Modal title={`Zápis z porady · ${selectedMeeting.date}`} subtitle={`Zapsal/a: ${selectedMeeting.createdByName || "—"}`} className="max-w-4xl" onClose={() => setSelectedMeeting(null)}>
+    {selectedMeeting && <Modal title={`${selectedMeeting.status === "scheduled" ? "Porada" : "Zápis z porady"} · ${selectedMeeting.date}`} subtitle={meetingMinutesAuthorName(selectedMeeting) ? `Zapsal/a: ${meetingMinutesAuthorName(selectedMeeting)}` : `Založil/a: ${selectedMeeting.createdByName || "—"} · zápis dosud nebyl pořízen`} className="max-w-4xl" onClose={() => setSelectedMeeting(null)}>
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-3"><div><div className="text-xs font-bold uppercase text-slate-500">Účastníci</div><div className="mt-1 text-sm text-slate-800">{(selectedMeeting.participantNames || []).join(", ") || "Neuvedeni"}</div></div><StatusBadge status={selectedMeeting.status}/></div>
         <section className="rounded-lg border border-slate-300 bg-white"><h3 className="rounded-t-lg border-b border-slate-200 bg-slate-100 px-3 py-2 text-sm font-bold text-slate-900">Zápis</h3><div className="whitespace-pre-wrap p-3 text-sm leading-6 text-slate-800">{meetingMinutesFromRecord(selectedMeeting) || "Bez dalšího zápisu."}</div></section>
         <section className="rounded-lg border border-slate-200 bg-white p-4"><h3 className="mb-3 font-bold text-slate-900">Úkoly</h3>{!selectedTasks.length ? <div className="text-sm text-slate-500">Bez úkolů.</div> : <div className="overflow-x-auto"><table className="record-table w-full min-w-[700px] text-left text-sm"><thead><tr className="border-b border-slate-200 text-xs uppercase text-slate-500"><th className="px-2 py-2">Úkol</th><th className="px-2 py-2">Odpovědné osoby</th><th className="px-2 py-2">Termín</th><th className="px-2 py-2">Stav</th></tr></thead><tbody>{selectedTasks.map((task, index) => <tr key={task.id || `${task.text}-${index}`} className="border-b border-slate-100 align-top last:border-0"><td className="px-2 py-2"><strong className="text-slate-900">{task.text}</strong>{task.status === "completed" && <details className="mt-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-950"><summary className="cursor-pointer font-semibold">Zobrazit řešení úkolu</summary><div className="mt-1 whitespace-pre-wrap">{task.completionText}</div><div className="mt-1 text-[11px] text-emerald-800">Vyřídil/a {task.completedByName || "pracovník"}{task.completedAt ? ` · ${new Intl.DateTimeFormat("cs-CZ", { dateStyle: "short", timeStyle: "short" }).format(new Date(task.completedAt))}` : ""}{task.completionRecipientNames?.length ? ` · odesláno: ${task.completionRecipientNames.join(", ")}` : ""}</div></details>}</td><td className="px-2 py-2">{taskOwnerNames(task, employees).join(", ") || task.owner || "Nepřiřazeno"}</td><td className="px-2 py-2">{task.deadline || "—"}</td><td className="px-2 py-2">{task.status === "completed" ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">Splněno</span> : <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">Nevyřízeno</span>}</td></tr>)}</tbody></table></div>}</section>
-        <div className="flex flex-wrap justify-end gap-2">{(isAdmin || (selectedMeeting.createdBy === employee.id && selectedMeeting.status !== "archived")) && <Button variant="secondary" onClick={() => { const item = selectedMeeting; setSelectedMeeting(null); edit(item); }}><Pencil className="mr-1 inline" size={16}/>{selectedMeeting.status === "archived" ? "Opravit zápis" : "Upravit a dokončit"}</Button>}<Button onClick={() => setSelectedMeeting(null)}>Zavřít</Button></div>
+        <div className="flex flex-wrap justify-end gap-2">{canEditMeeting(selectedMeeting) && <Button variant="secondary" onClick={() => { const item = selectedMeeting; setSelectedMeeting(null); edit(item); }}><Pencil className="mr-1 inline" size={16}/>{selectedMeeting.status === "scheduled" ? "Zapsat zápis" : selectedMeeting.status === "archived" ? "Opravit zápis" : "Upravit a dokončit"}</Button>}<Button onClick={() => setSelectedMeeting(null)}>Zavřít</Button></div>
       </div>
     </Modal>}
   </fieldset>;
