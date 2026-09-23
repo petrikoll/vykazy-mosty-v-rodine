@@ -9,9 +9,11 @@ async function main() {
   process.env.GOOGLE_SHEETS_PRIMARY = "false";
 
   const workspace = require("../server/googleWorkspace.cjs");
+  let pdfUploads = 0;
   workspace.syncRecord = async () => ({ synced: true });
   workspace.deleteRecord = async () => ({ deleted: true });
   workspace.trashFile = async () => ({ trashed: true });
+  workspace.uploadFile = async () => { pdfUploads += 1; return { uploaded: true, id: `pdf-${pdfUploads}`, webViewLink: "https://example.test/pdf" }; };
 
   const { readDb, writeDb } = require("../server/storage.cjs");
   const { createSession } = require("../server/auth.cjs");
@@ -48,20 +50,30 @@ async function main() {
       });
       return { status: response.status, body: await response.json() };
     };
+    const uploadPdf = async (employeeId, meetingId) => {
+      const body = new FormData();
+      body.append("file", new Blob(["%PDF-1.4 test"], { type: "application/pdf" }), "meeting.pdf");
+      const response = await fetch(`${address}/api/meetings/${meetingId}/pdf`, {
+        method: "POST", headers: { Authorization: `Bearer ${tokens[employeeId]}` }, body,
+      });
+      return { status: response.status, body: await response.json() };
+    };
 
-    const deniedCreation = await request("worker-a", "/api/meetings", "POST", {
-      date: "2026-09-02", content: "Pracovník nesmí sám založit novou poradu.", status: "draft",
+    const independentMeeting = await request("worker-a", "/api/meetings", "POST", {
+      date: "2026-09-03", content: "Pracovník může sám založit poradu a napsat zápis.", status: "draft",
     });
-    assert.equal(deniedCreation.status, 403, "worker cannot create a meeting without a guarantor or service manager");
+    assert.equal(independentMeeting.status, 201, JSON.stringify(independentMeeting.body));
+    assert.equal(independentMeeting.body.meeting.status, "draft");
+    assert.equal(independentMeeting.body.meeting.minutesAuthorId, "worker-a");
 
-    const created = await request("guarantor", "/api/meetings", "POST", {
-      date: "2026-09-02", content: "", participantIds: ["guarantor"], status: "scheduled",
+    const created = await request("worker-b", "/api/meetings", "POST", {
+      date: "2026-09-02", content: "", participantIds: ["worker-b"], status: "scheduled",
       followUpTasks: [{ id: "old-task", sourceMeetingId: "old-meeting", text: "Doplnit podklady", ownerIds: ["worker-b"], deadline: "2026-10-01" }],
     });
     assert.equal(created.status, 201, JSON.stringify(created.body));
     const id = created.body.meeting.id;
     assert.equal(created.body.meeting.status, "scheduled");
-    assert.equal(created.body.meeting.createdBy, "guarantor");
+    assert.equal(created.body.meeting.createdBy, "worker-b");
     assert.equal(created.body.meeting.minutesAuthorId, "");
     assert.deepEqual(created.body.meeting.followUpTaskRefs, [], "scheduling a meeting does not alter previous tasks");
 
@@ -80,13 +92,13 @@ async function main() {
       status: "draft",
     });
     assert.equal(firstMinutes.status, 200, JSON.stringify(firstMinutes.body));
-    assert.equal(firstMinutes.body.meeting.createdBy, "guarantor", "meeting founder remains recorded");
+    assert.equal(firstMinutes.body.meeting.createdBy, "worker-b", "meeting founder remains recorded");
     assert.equal(firstMinutes.body.meeting.minutesAuthorId, "worker-a", "first writer becomes the minutes author");
     assert.equal(firstMinutes.body.meeting.minutesAuthorName, "Pracovník A");
 
     const stored = await readDb();
     assert.equal(stored.meetings.find((meeting) => meeting.id === "old-meeting").tasks[0].deadline, "2026-09-10", "worker cannot change the old task while writing a new meeting");
-    assert.deepEqual(stored.meetings.find((meeting) => meeting.id === id).followUpTaskRefs.map((reference) => reference.meetingId), ["old-meeting"]);
+    assert.deepEqual(stored.meetings.find((meeting) => meeting.id === id).followUpTaskRefs.map((reference) => reference.meetingId).sort(), ["hidden-meeting", "old-meeting"]);
 
     const author = await request("worker-a", `/api/meetings/${id}`, "PATCH", {
       date: "2026-09-02", content: "Opravený koncept.", participantIds: ["worker-b", "guarantor"], status: "draft",
@@ -96,7 +108,8 @@ async function main() {
     const otherWorker = await request("worker-b", `/api/meetings/${id}`, "PATCH", {
       date: "2026-09-02", content: "Cizí úprava.", status: "draft",
     });
-    assert.equal(otherWorker.status, 403, "another participant cannot edit the author's draft");
+    assert.equal(otherWorker.status, 200, "any employee may finish an unapproved draft");
+    assert.equal(otherWorker.body.meeting.minutesAuthorId, "worker-a", "first minutes author remains identified");
 
     const deleteByWorker = await request("worker-a", `/api/meetings/${id}`, "DELETE");
     assert.equal(deleteByWorker.status, 403, "writing a meeting does not grant deletion rights");
@@ -108,21 +121,48 @@ async function main() {
     assert(visibleToAuthor.body.meetings.some((meeting) => meeting.id === id));
     assert(visibleToParticipant.body.meetings.some((meeting) => meeting.id === id));
     assert(visibleToGuarantor.body.meetings.some((meeting) => meeting.id === id), "guarantor sees the meeting written by another worker");
-    assert(!visibleToUninvolved.body.meetings.some((meeting) => meeting.id === id), "after a writer claims the record, unrelated workers no longer see a private draft");
+    assert(visibleToUninvolved.body.meetings.some((meeting) => meeting.id === id), "all employees can view and write an unapproved meeting");
     assert.equal(visibleToAuthor.body.collaborators.length, 6, "worker can select guarantor and other team participants or task owners");
 
-    const archivedDatabase = await readDb();
-    archivedDatabase.meetings.find((meeting) => meeting.id === id).status = "archived";
-    await writeDb(archivedDatabase);
+    const earlyApproval = await request("guarantor", `/api/meetings/${id}/approve`, "POST");
+    assert.equal(earlyApproval.status, 409, "a draft cannot be approved");
+    const submitted = await request("worker-c", `/api/meetings/${id}`, "PATCH", {
+      date: "2026-09-02", content: "Zápis k potvrzení.", status: "submitted",
+    });
+    assert.equal(submitted.status, 200, JSON.stringify(submitted.body));
+    assert.equal(submitted.body.meeting.status, "submitted");
+    assert.equal(submitted.body.meeting.approvedAt || "", "", "submitting does not approve or archive the meeting");
+    assert.equal(submitted.body.meeting.submittedBy, "worker-c");
+    const prematurePdf = await uploadPdf("director", id);
+    assert.equal(prematurePdf.status, 403, "a pending meeting PDF cannot be stored yet");
+
+    const workerApproval = await request("worker-a", `/api/meetings/${id}/approve`, "POST");
+    assert.equal(workerApproval.status, 403, "worker cannot approve a meeting");
+    const projectManagerApproval = await request("project-manager", `/api/meetings/${id}/approve`, "POST");
+    assert.equal(projectManagerApproval.status, 403, "project manager cannot approve a meeting");
+    const directorApproval = await request("director", `/api/meetings/${id}/approve`, "POST");
+    assert.equal(directorApproval.status, 200, JSON.stringify(directorApproval.body));
+    assert.equal(directorApproval.body.meeting.status, "approved");
+    assert.equal(directorApproval.body.meeting.approvedBy, "director");
+    assert(directorApproval.body.meeting.approvedAt);
+    assert.equal(pdfUploads, 0, "approval itself must not generate or upload a PDF");
+    const workerPdf = await uploadPdf("worker-a", id);
+    assert.equal(workerPdf.status, 403, "worker cannot upload an approved meeting PDF");
+    const approvedPdf = await uploadPdf("director", id);
+    assert.equal(approvedPdf.status, 200, JSON.stringify(approvedPdf.body));
+    assert.equal(pdfUploads, 1, "PDF is uploaded only after an explicit request");
+    const repeatedApproval = await request("director", `/api/meetings/${id}/approve`, "POST");
+    assert.equal(repeatedApproval.status, 409, "approval cannot be repeated silently");
+
     const archivedEdit = await request("worker-a", `/api/meetings/${id}`, "PATCH", {
       date: "2026-09-02", content: "Pozdější úprava.", status: "draft",
     });
-    assert.equal(archivedEdit.status, 403, "author cannot edit an archived meeting");
+    assert.equal(archivedEdit.status, 403, "author cannot edit an approved meeting");
 
     const managerEdit = await request("project-manager", `/api/meetings/${id}`, "PATCH", {
       date: "2026-09-02", content: "Neoprávněná oprava hotového zápisu.", status: "draft",
     });
-    assert.equal(managerEdit.status, 403, "project manager cannot correct an archived meeting");
+    assert.equal(managerEdit.status, 403, "project manager cannot correct an approved meeting");
     const managerDelete = await request("project-manager", `/api/meetings/${id}`, "DELETE");
     assert.equal(managerDelete.status, 403, "project manager cannot delete a meeting");
 
@@ -131,6 +171,16 @@ async function main() {
     });
     assert.equal(guarantorEdit.status, 200, JSON.stringify(guarantorEdit.body));
     assert.equal(guarantorEdit.body.meeting.minutesAuthorId, "worker-a", "leader correction preserves the original minutes author");
+    assert.equal(guarantorEdit.body.meeting.status, "draft", "correcting an approved meeting requires new approval");
+    assert.equal(guarantorEdit.body.meeting.approvedAt, "");
+
+    const resubmitted = await request("worker-a", `/api/meetings/${id}`, "PATCH", {
+      date: "2026-09-02", content: "Opravený zápis k potvrzení.", status: "submitted",
+    });
+    assert.equal(resubmitted.status, 200);
+    const guarantorApproval = await request("guarantor", `/api/meetings/${id}/approve`, "POST");
+    assert.equal(guarantorApproval.status, 200, JSON.stringify(guarantorApproval.body));
+    assert.equal(guarantorApproval.body.meeting.approvedBy, "guarantor");
 
     const deleteByGuarantor = await request("guarantor", `/api/meetings/${id}`, "DELETE");
     assert.equal(deleteByGuarantor.status, 200, "guarantor may delete a meeting record");

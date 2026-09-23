@@ -361,19 +361,11 @@ function meetingManagerOnly(req, res, next) {
 }
 
 function canAccessMeeting(employee, meeting) {
-  return isLeaderRole(employee.appRole)
-    || (meeting.status === "scheduled" && employee.appRole === "worker")
-    || (meeting.participantIds || []).includes(employee.id)
-    || (meeting.tasks || []).some((task) => meetingTaskOwnerIds(task).includes(employee.id)
-      || (task.completionRecipientIds || []).includes(employee.id))
-    || meeting.createdBy === employee.id
-    || meetingMinutesAuthorId(meeting) === employee.id;
+  return Boolean(employee && meeting);
 }
 
 function canEditMeeting(employee, meeting) {
-  if (canManageMeeting(employee)) return true;
-  if (meeting.status === "scheduled") return ["worker", "project_manager"].includes(employee.appRole);
-  return ["draft", "submitted"].includes(meeting.status) && meetingMinutesAuthorId(meeting) === employee.id;
+  return canManageMeeting(employee) || !["approved", "archived"].includes(meeting.status);
 }
 
 function normalizeExternalParticipants(names, teamParticipants = []) {
@@ -618,17 +610,50 @@ function assertAssignmentsAvailable(db, assignments, positions, excludedEmployee
     const position = positions.find((item) => item.id === duplicateId);
     throw new Error(`Pozice „${position?.name || duplicateId}“ byla vybrána vícekrát.`);
   }
-  for (const positionId of positionIds) {
-    const owner = db.employees.find((employee) => employee.id !== excludedEmployeeId
+  for (const assignment of assignments) {
+    const positionId = assignment.positionId;
+    const position = positions.find((item) => item.id === positionId);
+    const owners = db.employees.filter((employee) => employee.id !== excludedEmployeeId
       && employee.active !== false
-      && (employee.assignments || []).some((assignment) => assignment.positionId === positionId));
+      && (employee.assignments || []).some((item) => item.positionId === positionId));
+    if (position?.allocationType === "hours" && ["DPP", "DPČ"].includes(position.contractType)) {
+      const assignedHours = owners.reduce((sum, employee) => sum + (employee.assignments || [])
+        .filter((item) => item.positionId === positionId)
+        .reduce((hours, item) => hours + Number(item.monthlyHours ?? position.monthlyHours ?? 0), 0), 0);
+      const requestedHours = Number(assignment.monthlyHours ?? position.monthlyHours ?? 0);
+      if (assignedHours + requestedHours > Number(position.monthlyHours || 0) + 0.000001) {
+        const conflict = new Error(`Pozice „${position.name}“ má limit ${position.monthlyHours} h/měsíc. Přiděleno je již ${Number(assignedHours.toFixed(2))} h; pro toto přiřazení zbývá nejvýše ${Number(Math.max(0, position.monthlyHours - assignedHours).toFixed(2))} h.`);
+        conflict.status = 409;
+        throw conflict;
+      }
+      continue;
+    }
+    const owner = owners[0];
     if (owner) {
-      const position = positions.find((item) => item.id === positionId);
       const conflict = new Error(`Pozice „${position?.name || positionId}“ je již přiřazena pracovníkovi ${owner.name}.`);
       conflict.status = 409;
       throw conflict;
     }
   }
+}
+
+function normalizeEmployeeAssignment(assignment, positions, preserveExtras = false) {
+  const position = positions.find((item) => item.id === assignment.positionId && item.active !== false && item.reportRequired);
+  if (!position) throw new Error(`Neplatná pozice nebo pozice bez pracovního výkazu: ${assignment.positionId}`);
+  const normalized = {
+    ...(preserveExtras ? assignment : {}),
+    id: assignment.id || makeId("ASG"),
+    positionId: position.id,
+    ...(assignment.fte !== undefined ? { fte: nonnegativeNumber(assignment.fte) } : {}),
+  };
+  if (position.allocationType === "hours") {
+    const hours = Number(assignment.monthlyHours ?? position.monthlyHours);
+    if (!Number.isFinite(hours) || hours <= 0 || hours > Number(position.monthlyHours || 0) || Math.abs(hours * 100 - Math.round(hours * 100)) > 0.000001) {
+      throw new Error(`U pozice „${position.name}“ zadejte více než 0 a nejvýše ${position.monthlyHours} h/měsíc (maximálně dvě desetinná místa).`);
+    }
+    normalized.monthlyHours = hours;
+  }
+  return normalized;
 }
 
 async function visiblePortalData(db, employee) {
@@ -984,18 +1009,9 @@ app.post("/api/employees", requireAuth, leaderOnly, async (req, res) => {
     const normalizedAssignments = appRole === "manager" && !requestedAssignments.some((assignment) => assignment.positionId === "expert-guarantor")
       ? [{ positionId: "expert-guarantor" }, ...requestedAssignments]
       : requestedAssignments;
-    const assignments = normalizedAssignments.map((assignment) => {
-      const position = config.POSITIONS.find((item) => item.id === assignment.positionId && item.active !== false && item.reportRequired);
-      if (!position) throw new Error(`Neplatná pozice nebo pozice bez pracovního výkazu: ${assignment.positionId}`);
-      return {
-        id: assignment.id || makeId("ASG"),
-        positionId: position.id,
-        ...(assignment.fte !== undefined ? { fte: nonnegativeNumber(assignment.fte) } : {}),
-        ...(assignment.monthlyHours !== undefined ? { monthlyHours: nonnegativeNumber(assignment.monthlyHours) } : {}),
-      };
-    });
+    const assignments = normalizedAssignments.map((assignment) => normalizeEmployeeAssignment(assignment, config.POSITIONS));
     const employee = await mutateDb(async (db) => {
-      assertAssignmentsAvailable(db, normalizedAssignments, config.POSITIONS);
+      assertAssignmentsAvailable(db, assignments, config.POSITIONS);
       const item = {
         id: `${slugify(name) || "pracovnik"}-${crypto.randomBytes(3).toString("hex")}`,
         name,
@@ -1058,17 +1074,9 @@ app.patch("/api/employees/:id", requireAuth, leaderOnly, async (req, res) => {
         const requestedAssignments = current.appRole === "manager" && !req.body.assignments.some((assignment) => assignment.positionId === "expert-guarantor")
           ? [{ positionId: "expert-guarantor" }, ...req.body.assignments]
           : req.body.assignments;
-        assertAssignmentsAvailable(db, requestedAssignments, config.POSITIONS, current.id);
-        next.assignments = requestedAssignments.map((assignment) => {
-          const position = config.POSITIONS.find((item) => item.id === assignment.positionId && item.active !== false && item.reportRequired);
-          if (!position) throw new Error(`Neplatná pozice nebo pozice bez pracovního výkazu: ${assignment.positionId}`);
-          return {
-            ...assignment,
-            id: assignment.id || makeId("ASG"),
-            ...(assignment.fte !== undefined ? { fte: nonnegativeNumber(assignment.fte) } : {}),
-            ...(assignment.monthlyHours !== undefined ? { monthlyHours: nonnegativeNumber(assignment.monthlyHours) } : {}),
-          };
-        });
+        const normalizedAssignments = requestedAssignments.map((assignment) => normalizeEmployeeAssignment(assignment, config.POSITIONS, true));
+        assertAssignmentsAvailable(db, normalizedAssignments, config.POSITIONS, current.id);
+        next.assignments = normalizedAssignments;
       }
       if (req.body.pin) {
         next.pinHash = hashPin(String(req.body.pin));
@@ -1199,7 +1207,10 @@ app.post("/api/work-reports/submit", requireAuth, async (req, res) => {
         }
         const requiredWorkedHours = Math.max(0, metrics.maxHoursForRole - metrics.totalAbsenceHours);
         const workedHours = Math.round(activities.reduce((sum, activity) => sum + activity.hours, 0) * 100) / 100;
-        if (Math.abs(workedHours - requiredWorkedHours) > 0.011) {
+        if (position.allocationType === "hours" && (workedHours <= 0 || workedHours > requiredWorkedHours + 0.000001)) {
+          throw new Error(`Hodiny ve výkazu ${position.name} musí být vyšší než 0 a nejvýše ${requiredWorkedHours.toFixed(2)} h. Vyplněno ${workedHours.toFixed(2)} h.`);
+        }
+        if (position.allocationType !== "hours" && Math.abs(workedHours - requiredWorkedHours) > 0.011) {
           throw new Error(`Hodiny ve výkazu ${position.name} nesedí. Požadováno ${requiredWorkedHours.toFixed(2)} h, vyplněno ${workedHours.toFixed(2)} h.`);
         }
         const timestamp = now();
@@ -1863,7 +1874,7 @@ app.delete("/api/supervisions/:id", requireAuth, leaderOnly, deleteSimpleRecordH
   collection: "supervisions", type: "supervision", label: "Záznam supervize",
 }));
 
-app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
+app.post("/api/meetings", requireAuth, async (req, res) => {
   try {
     const result = await mutateDb(async (db) => {
       const participants = db.employees.filter((item) => (req.body.participantIds || []).includes(item.id));
@@ -1892,6 +1903,9 @@ app.post("/api/meetings", requireAuth, leaderOnly, async (req, res) => {
         createdBy: req.auth.employee.id, createdByName: req.auth.employee.name,
         minutesAuthorId: notes ? req.auth.employee.id : "",
         minutesAuthorName: notes ? req.auth.employee.name : "",
+        submittedAt: status === "submitted" ? now() : "",
+        submittedBy: status === "submitted" ? req.auth.employee.id : "",
+        submittedByName: status === "submitted" ? req.auth.employee.name : "",
         createdAt: now(), updatedAt: now(),
       };
       if (!item.date) throw new Error("Datum porady je povinné.");
@@ -1930,13 +1944,13 @@ app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
         missing.status = 404;
         throw missing;
       }
-      if (item.status === "archived" && !canManageMeeting(req.auth.employee)) {
+      if (["approved", "archived"].includes(item.status) && !canManageMeeting(req.auth.employee)) {
         const archived = new Error("Hotový zápis smí zpětně upravit pouze Odborný garant nebo Vedoucí služby/programu.");
         archived.status = 403;
         throw archived;
       }
       if (!canEditMeeting(req.auth.employee, item)) {
-        const forbidden = new Error("Tento zápis může upravit jeho zapisovatel, Odborný garant nebo Vedoucí služby/programu.");
+        const forbidden = new Error("Schválený zápis smí zpětně upravit pouze Odborný garant nebo Vedoucí služby/programu.");
         forbidden.status = 403;
         throw forbidden;
       }
@@ -1964,6 +1978,12 @@ app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
       item.tasks = taskResult.tasks;
       item.followUpTaskRefs = taskResult.followUpTaskRefs;
       item.status = req.body.status === "submitted" ? "submitted" : "draft";
+      item.submittedAt = item.status === "submitted" ? now() : "";
+      item.submittedBy = item.status === "submitted" ? req.auth.employee.id : "";
+      item.submittedByName = item.status === "submitted" ? req.auth.employee.name : "";
+      item.approvedAt = "";
+      item.approvedBy = "";
+      item.approvedByName = "";
       if (!item.minutesAuthorId) {
         item.minutesAuthorId = req.auth.employee.id;
         item.minutesAuthorName = req.auth.employee.name;
@@ -1988,6 +2008,35 @@ app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
         tag: `meeting-task-${result.meeting.id}`,
       }).catch((error) => console.error("Meeting task notification failed:", error.message));
     }
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.post("/api/meetings/:id/approve", requireAuth, meetingManagerOnly, async (req, res) => {
+  try {
+    const meeting = await mutateDb(async (db) => {
+      const item = db.meetings.find((entry) => entry.id === req.params.id);
+      if (!item) {
+        const missing = new Error("Porada nebyla nalezena.");
+        missing.status = 404;
+        throw missing;
+      }
+      if (item.status !== "submitted" || !item.notes?.trim()) {
+        const conflict = new Error("Schválit lze pouze zápis odeslaný ke schválení.");
+        conflict.status = 409;
+        throw conflict;
+      }
+      item.status = "approved";
+      item.approvedAt = now();
+      item.approvedBy = req.auth.employee.id;
+      item.approvedByName = req.auth.employee.name;
+      item.updatedAt = item.approvedAt;
+      addAudit(db, req.auth.employee, "approve", "meeting", item.id);
+      return { data: db, value: item };
+    });
+    const sync = await syncRecordSafe("meeting", meeting);
+    res.json({ meeting, sync });
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message });
   }
@@ -2161,7 +2210,7 @@ app.post("/api/meetings/:id/pdf", requireAuth, upload.single("file"), async (req
     const db = await readDb();
     const meeting = db.meetings.find((item) => item.id === req.params.id);
     if (!meeting) return res.status(404).json({ error: "Porada nebyla nalezena." });
-    if (!canManageMeeting(req.auth.employee) && (meetingMinutesAuthorId(meeting) !== req.auth.employee.id || meeting.status !== "submitted")) return res.status(403).json({ error: "PDF této porady nemůžete uložit." });
+    if (!canManageMeeting(req.auth.employee) || meeting.status !== "approved") return res.status(403).json({ error: "PDF na Disk smí uložit pouze Odborný garant nebo Vedoucí služby/programu po schválení zápisu." });
     const uploaded = await googleWorkspace.uploadFile({
       name: `${meeting.date}__zapis_z_porady.pdf`, mimeType: "application/pdf", buffer: req.file.buffer,
       pathSegments: [String(new Date(meeting.date).getFullYear()), "Porady"],
@@ -2178,9 +2227,8 @@ app.post("/api/meetings/:id/pdf", requireAuth, upload.single("file"), async (req
       item.driveFileId = uploaded.id || "";
       item.driveFileUrl = uploaded.webViewLink || "";
       item.localFilePath = localFilePath;
-      item.status = "archived";
       item.updatedAt = now();
-      addAudit(current, req.auth.employee, "archive", "meeting", item.id);
+      addAudit(current, req.auth.employee, "save_pdf", "meeting", item.id);
       return { data: current, value: item };
     });
     const replacedDriveFile = uploaded.uploaded && meeting.driveFileId && meeting.driveFileId !== uploaded.id

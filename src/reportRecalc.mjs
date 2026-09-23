@@ -37,6 +37,10 @@ export const recalculateAllReportActivities = ({
     });
     const requiredWorkedHours = roundHours(roleMetrics.maxHoursForRole - roleMetrics.totalAbsenceHours);
     const baseActivities = normalizeActivitiesForRole({ role, activitiesByRole, resetToDefaultText });
+    if (role.allocationType === "hours") {
+      next[role.id] = baseActivities;
+      continue;
+    }
     const distributed = distributeActivitiesByWeights(baseActivities, requiredWorkedHours);
     next[role.id] = balanceActivitiesToRequiredHours(distributed, requiredWorkedHours);
   }

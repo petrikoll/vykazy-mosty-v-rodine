@@ -18,6 +18,8 @@ export async function createMeetingPdf(meeting, project) {
       { margin: [0, 20, 0, 12], table: { widths: [90, "*"], body: [
         ["Datum", meeting.date], ["Účastníci", (meeting.participantNames || []).join(", ") || "-"],
         ["Zapsal/a", meeting.minutesAuthorName || meeting.createdByName || "-"],
+        ["Stav", meeting.status === "approved" ? "Schváleno" : meeting.status === "archived" ? "Archivováno" : meeting.status === "submitted" ? "Čeká na schválení" : "Koncept"],
+        ...(meeting.approvedByName && ["approved", "archived"].includes(meeting.status) ? [["Schválil/a", `${meeting.approvedByName}${meeting.approvedAt ? ` · ${new Intl.DateTimeFormat("cs-CZ", { dateStyle: "short" }).format(new Date(meeting.approvedAt))}` : ""}`]] : []),
       ] }, layout: "lightHorizontalLines" },
       { text: "Zápis", style: "heading" }, { text: meetingContent || "Bez dalšího zápisu.", preserveLeadingSpaces: true },
       { text: "Úkoly", style: "heading" },

@@ -68,7 +68,10 @@ export default function WorkReports({ employee, positions, project, reports, onR
         loadedActivities[role.id] = existingReport.activities || [];
       } else if (!loadedActivities[role.id]) {
           const metrics = calculateRoleMetrics({ role, positionDef: role, month: period.month, year: period.year, absences: loadedAbsences, totalFte });
-          loadedActivities[role.id] = distributeActivitiesByWeights(createDefaultActivities(role), Math.max(0, metrics.maxHoursForRole - metrics.totalAbsenceHours));
+          const defaults = createDefaultActivities(role);
+          loadedActivities[role.id] = role.allocationType === "hours"
+            ? defaults
+            : distributeActivitiesByWeights(defaults, Math.max(0, metrics.maxHoursForRole - metrics.totalAbsenceHours));
       }
     }
     setAbsences(loadedAbsences);
@@ -97,8 +100,8 @@ export default function WorkReports({ employee, positions, project, reports, onR
     const metrics = calculateRoleMetrics({ role, positionDef: role, month: period.month, year: period.year, absences: roleAbsences, totalFte });
     const target = Math.max(0, metrics.maxHoursForRole - metrics.totalAbsenceHours);
     let activities = clampActivityRows(locked ? (existingReport.activities || []) : (activitiesByRole[role.id] || createDefaultActivities(role)));
-    if (!locked && !activitiesByRole[role.id]) activities = distributeActivitiesByWeights(activities, target);
-    const status = getActivityHoursStatus(activities, target);
+    if (!locked && !activitiesByRole[role.id] && role.allocationType !== "hours") activities = distributeActivitiesByWeights(activities, target);
+    const status = getActivityHoursStatus(activities, target, { maxOnly: role.allocationType === "hours" });
     return { role, metrics, target, activities, status, existingReport, locked, reportAbsences: roleAbsences };
   }), [roles, period, absences, activitiesByRole, totalFte, reports, topLevel]);
 
@@ -213,7 +216,7 @@ export default function WorkReports({ employee, positions, project, reports, onR
         <div className="flex flex-wrap items-center gap-2">{report.existingReport && <StatusBadge status={report.existingReport.status}/>} {(report.existingReport?.driveFileId || report.existingReport?.localFilePath) && <Button variant="secondary" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => previewSignedReport(report.existingReport)}><Eye className="mr-1 inline" size={14}/>Náhled na Disku</Button>} {canDelete && report.existingReport && <Button variant="danger" className="min-h-8 px-2 py-1 text-xs" disabled={busy} onClick={() => deleteExistingReport(report.existingReport)}><Trash2 className="mr-1 inline" size={14}/>Smazat výkaz</Button>}<button className="min-h-8 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => setExpanded((ids) => ids.includes(report.role.id) ? ids.filter((id) => id !== report.role.id) : [...ids, report.role.id])}>{expanded.includes(report.role.id) ? "Skrýt" : "Zobrazit"}</button></div>
       </div>
       {report.existingReport?.status === "returned" && report.existingReport.managerComment && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><strong>{report.existingReport.reviewedByRole === "director" ? "Poznámka Vedoucí služby/programu:" : "Poznámka Odborného garanta:"}</strong> {report.existingReport.managerComment}</div>}
-      <div className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm ${report.status.isBalanced ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}><span>Zapsáno <strong>{formatHours(report.status.sumActivitiesHours)}</strong> z {formatHours(report.target)}</span><strong>{report.status.isBalanced ? "Hodiny sedí" : `Rozdíl ${formatHours(Math.abs(report.status.diff))}`}</strong></div>
+      <div className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm ${report.status.isBalanced ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}><span>Zapsáno <strong>{formatHours(report.status.sumActivitiesHours)}</strong> {report.role.allocationType === "hours" ? `z max. ${formatHours(report.target)}` : `z ${formatHours(report.target)}`}</span><strong>{report.role.allocationType === "hours" ? report.status.isBalanced ? "V limitu" : report.status.sumActivitiesHours <= HOURS_TOLERANCE ? "Zadejte hodiny" : `Překročeno o ${formatHours(report.status.exceededHours)}` : report.status.isBalanced ? "Hodiny sedí" : `Rozdíl ${formatHours(Math.abs(report.status.diff))}`}</strong></div>
       {expanded.includes(report.role.id) && <div className="mt-3">
         <div className="hidden grid-cols-[1fr_100px_36px] gap-2 px-1 pb-1 text-xs font-semibold text-slate-500 md:grid"><span>Činnost</span><span>Hodiny</span><span></span></div>
         {report.activities.map((activity, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_76px_36px] gap-2 border-t border-slate-100 py-1.5 first:border-t-0 md:grid-cols-[1fr_100px_36px]">
@@ -221,7 +224,7 @@ export default function WorkReports({ employee, positions, project, reports, onR
           <Input aria-label={`Hodiny pro činnost ${index + 1}`} type="number" min="0" step="0.01" value={activity.hours || ""} disabled={report.locked} onChange={(event) => updateActivities(report.role.id, (items) => items.map((item, i) => i === index ? { ...item, hours: Number(event.target.value) } : item))}/>
           <button aria-label="Odstranit činnost" disabled={report.locked || report.activities.length <= 1} onClick={() => updateActivities(report.role.id, (items) => items.filter((_, i) => i !== index))} className="min-h-9 rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"><Trash2 size={17}/></button>
         </div>)}
-        <div className="mt-2 flex flex-wrap gap-2"><Button variant="secondary" disabled={report.locked || report.activities.length >= 10} onClick={() => updateActivities(report.role.id, (items) => [...items, { desc: "", hours: 0 }])}><Plus className="mr-1 inline" size={16}/>Přidat činnost</Button><Button variant="secondary" disabled={report.locked} onClick={() => updateActivities(report.role.id, (items) => distributeActivitiesByWeights(items, report.target))}>Přepočítat hodiny</Button></div>
+        <div className="mt-2 flex flex-wrap gap-2"><Button variant="secondary" disabled={report.locked || report.activities.length >= 10} onClick={() => updateActivities(report.role.id, (items) => [...items, { desc: "", hours: 0 }])}><Plus className="mr-1 inline" size={16}/>Přidat činnost</Button>{report.role.allocationType !== "hours" && <Button variant="secondary" disabled={report.locked} onClick={() => updateActivities(report.role.id, (items) => distributeActivitiesByWeights(items, report.target))}>Přepočítat hodiny</Button>}</div>
       </div>}
     </section>)}</section>
 
@@ -231,7 +234,7 @@ export default function WorkReports({ employee, positions, project, reports, onR
         <Button variant="secondary" disabled={busy || !roleReports.length} onClick={printCurrentReports}>{topLevel ? "Vytisknout výkaz" : "Stáhnout / vytisknout"}</Button>
       </div>
       {!roles.length && <p className="mt-3 text-sm text-red-700">Nemáte přiřazenou pozici, pro kterou se vytváří výkaz.</p>}
-      {roleReports.some((item) => Math.abs(item.status.diff) > HOURS_TOLERANCE) && <p className="mt-3 text-sm text-red-700">Před předáním dorovnejte hodiny ve všech výkazech.</p>}
+      {editableReports.some((item) => !item.status.isBalanced) && <p className="mt-3 text-sm text-red-700">Před předáním doplňte nebo opravte hodiny v nevyhovujících výkazech. U DPP/DPČ stačí libovolný kladný rozsah do přiřazeného maxima.</p>}
     </Card>
   </div>;
 }

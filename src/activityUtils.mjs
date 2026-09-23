@@ -13,7 +13,7 @@ export const sumActivityHours = (activities) =>
 export const getHoursDiff = (actual, required) =>
   roundHours(Number(actual || 0) - Number(required || 0));
 
-export const getActivityHoursStatus = (activities, requiredWorkedHours) => {
+export const getActivityHoursStatus = (activities, requiredWorkedHours, { maxOnly = false } = {}) => {
   const sumActivitiesHours = sumActivityHours(activities);
   const diff = getHoursDiff(sumActivitiesHours, requiredWorkedHours);
 
@@ -21,8 +21,8 @@ export const getActivityHoursStatus = (activities, requiredWorkedHours) => {
     requiredWorkedHours,
     sumActivitiesHours,
     diff,
-    isBalanced: Math.abs(diff) <= HOURS_TOLERANCE,
-    missingHours: diff < -HOURS_TOLERANCE ? Math.abs(diff) : 0,
+    isBalanced: maxOnly ? sumActivitiesHours > HOURS_TOLERANCE && diff <= HOURS_TOLERANCE : Math.abs(diff) <= HOURS_TOLERANCE,
+    missingHours: !maxOnly && diff < -HOURS_TOLERANCE ? Math.abs(diff) : 0,
     exceededHours: diff > HOURS_TOLERANCE ? diff : 0,
   };
 };
