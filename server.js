@@ -1210,6 +1210,14 @@ app.post("/api/work-reports/submit", requireAuth, async (req, res) => {
         if (position.allocationType === "hours" && (workedHours <= 0 || workedHours > requiredWorkedHours + 0.000001)) {
           throw new Error(`Hodiny ve výkazu ${position.name} musí být vyšší než 0 a nejvýše ${requiredWorkedHours.toFixed(2)} h. Vyplněno ${workedHours.toFixed(2)} h.`);
         }
+        if (position.allocationType === "hours") {
+          const otherReportedHours = db.workReports
+            .filter((report) => report.id !== existing?.id && report.positionId === position.id && report.month === month && report.year === year)
+            .reduce((sum, report) => sum + Number(report.workedHours ?? (report.activities || []).reduce((hours, activity) => hours + Number(activity.hours || 0), 0)), 0);
+          if (otherReportedHours + workedHours > Number(position.monthlyHours || 0) + 0.000001) {
+            throw new Error(`Součet výkazů pro pozici ${position.name} za ${month}/${year} by překročil projektový limit ${position.monthlyHours} h/měsíc. Ostatní pracovníci již vykázali ${otherReportedHours.toFixed(2)} h.`);
+          }
+        }
         if (position.allocationType !== "hours" && Math.abs(workedHours - requiredWorkedHours) > 0.011) {
           throw new Error(`Hodiny ve výkazu ${position.name} nesedí. Požadováno ${requiredWorkedHours.toFixed(2)} h, vyplněno ${workedHours.toFixed(2)} h.`);
         }

@@ -64,21 +64,34 @@ async function main() {
     const repeatedFte = await createWorker("Pracovník E", [{ positionId: "case-manager" }]);
     assert.equal(repeatedFte.status, 409, "regular positions remain exclusive");
 
-    const submitHourly = async (hours) => {
+    const submitHourly = async (employee, hours, month = 9) => {
       const response = await fetch(`${address}/api/work-reports/submit`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${createSession(first.body.id)}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ month: 9, year: 2026, reports: [
-          { assignmentId: first.body.assignments[0].id, activities: [{ desc: "Právní konzultace", hours }] },
+        headers: { Authorization: `Bearer ${createSession(employee.body.id)}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ month, year: 2026, reports: [
+          { assignmentId: employee.body.assignments[0].id, activities: [{ desc: "Projektová činnost", hours }] },
         ] }),
       });
       return { status: response.status, body: await response.json() };
     };
-    const reportOverLimit = await submitHourly(1.01);
+    const reportOverLimit = await submitHourly(first, 1.01);
     assert.equal(reportOverLimit.status, 400, "hourly report cannot exceed the worker's assigned maximum");
-    const reportBelowLimit = await submitHourly(0.5);
+    const reportBelowLimit = await submitHourly(first, 0.5);
     assert.equal(reportBelowLimit.status, 201, JSON.stringify(reportBelowLimit.body));
     assert.equal(reportBelowLimit.body.reports[0].workedHours, 0.5);
+
+    const dppReportA = await submitHourly(firstDpp, 2.5, 10);
+    assert.equal(dppReportA.status, 201, JSON.stringify(dppReportA.body));
+    const reducedDpp = await request(`/api/employees/${firstDpp.body.id}`, "PATCH", {
+      assignments: [{ ...firstDpp.body.assignments[0], monthlyHours: 1.5 }],
+    });
+    assert.equal(reducedDpp.status, 200, JSON.stringify(reducedDpp.body));
+    const thirdDppAfterReallocation = await createWorker("Pracovník DPP C", [{ positionId: "facilitator", monthlyHours: 1 }]);
+    assert.equal(thirdDppAfterReallocation.status, 201, JSON.stringify(thirdDppAfterReallocation.body));
+    const dppReportB = await submitHourly(secondDpp, 5, 10);
+    assert.equal(dppReportB.status, 201, JSON.stringify(dppReportB.body));
+    const aggregateOverLimit = await submitHourly(thirdDppAfterReallocation, 1, 10);
+    assert.equal(aggregateOverLimit.status, 400, "past reports still count toward the monthly project cap after assignments change");
 
     const doubleSelection = await createWorker("Pracovník F", [
       { positionId: "facilitator", monthlyHours: 1 },
